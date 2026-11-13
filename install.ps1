@@ -9,10 +9,10 @@
     $ErrorActionPreference = 'Stop'
 
     $appName = 'Kitten'
-    $expectedVersion = '0.1.1'
-    $installerFileName = 'Kitten_0.1.1_x64-setup.exe'
-    $installerUrl = 'https://github.com/akiistaken/kitty-companion/releases/download/v0.1.1/Kitten_0.1.1_x64-setup.exe'
-    $expectedSha256 = 'A9C15282CA6F57093D1E20BA3F3C674BFD550C17F4C4CC7C50993D28A136303C'
+    $expectedVersion = '0.1.2'
+    $installerFileName = 'Kitten_0.1.2_x64-setup.exe'
+    $installerUrl = 'https://github.com/akiistaken/kitty-companion/releases/download/v0.1.2/Kitten_0.1.2_x64-setup.exe'
+    $expectedSha256 = '382B8F1FDE12118203BB03AE7E90F69D6E2A1A5BE243B34CFC24F81695B303C2'
     $silentArgs = @('/S')
     $successExitCodes = @(0)
 

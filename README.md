@@ -11,7 +11,7 @@ Run in Windows PowerShell 5.1 or PowerShell 7 (no Administrator privileges requi
 ### Pinned release (recommended)
 
 ```powershell
-irm https://raw.githubusercontent.com/akiistaken/kitty-companion/v0.1.1/install.ps1 | iex
+irm https://raw.githubusercontent.com/akiistaken/kitty-companion/v0.1.2/install.ps1 | iex
 ```
 
 ### Latest `main` release
@@ -20,7 +20,7 @@ irm https://raw.githubusercontent.com/akiistaken/kitty-companion/v0.1.1/install.
 irm https://raw.githubusercontent.com/akiistaken/kitty-companion/main/install.ps1 | iex
 ```
 
-> **Note:** The `v0.1.1` command pins a specific immutable release tag and checksum. The `main` command tracks the latest published release.
+> **Note:** The `v0.1.2` command pins a specific immutable release tag and checksum. The `main` command tracks the latest published release.
 
 ## System Requirements
 
@@ -31,31 +31,31 @@ irm https://raw.githubusercontent.com/akiistaken/kitty-companion/main/install.ps
 
 ## Manual Installation & Checksum Verification
 
-1. Download `Kitten_0.1.1_x64-setup.exe` and `SHA256SUMS.txt` from the [v0.1.1 release](https://github.com/akiistaken/kitty-companion/releases/tag/v0.1.1).
+1. Download `Kitten_0.1.2_x64-setup.exe` and `SHA256SUMS.txt` from the [v0.1.2 release](https://github.com/akiistaken/kitty-companion/releases/tag/v0.1.2).
 2. Verify the SHA-256 digest:
 
    ```powershell
-   Get-FileHash -LiteralPath .\Kitten_0.1.1_x64-setup.exe -Algorithm SHA256
+   Get-FileHash -LiteralPath .\Kitten_0.1.2_x64-setup.exe -Algorithm SHA256
    ```
 
-   Expected SHA-256 (`0.1.1`):
+   Expected SHA-256 (`0.1.2`):
 
    ```text
-   A9C15282CA6F57093D1E20BA3F3C674BFD550C17F4C4CC7C50993D28A136303C
+   382B8F1FDE12118203BB03AE7E90F69D6E2A1A5BE243B34CFC24F81695B303C2
    ```
 
 3. Run the installer interactively, or silently with:
 
    ```powershell
-   .\Kitten_0.1.1_x64-setup.exe /S
+   .\Kitten_0.1.2_x64-setup.exe /S
    ```
 
-> **Code signing notice:** `Kitten_0.1.1_x64-setup.exe` is currently **unsigned** (no Authenticode certificate). Windows SmartScreen may show a warning on manual execution; always verify the SHA-256 checksum above before running.
+> **Code signing notice:** `Kitten_0.1.2_x64-setup.exe` is currently **unsigned** (no Authenticode certificate). Windows SmartScreen may show a warning on manual execution; always verify the SHA-256 checksum above before running.
 
 ## What the Installer Does
 
 - Installs `kitten.exe` and `WebView2Loader.dll` into `%LOCALAPPDATA%\Kitten`
-- Registers **Kitten** (`0.1.1`, publisher `Aki`) in Windows Installed Apps (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Kitten`)
+- Registers **Kitten** (`0.1.2`, publisher `Aki`) in Windows Installed Apps (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Kitten`)
 - Creates Start Menu and Desktop shortcuts (and does **not** auto-launch the app during silent `/S` install)
 - Preserves saved companion progress (`%APPDATA%\com.aki.kitten\kitten_state.json`) across upgrades
 
