@@ -416,6 +416,30 @@ class ChiptuneAudio {
     if (!this.canPlay('brushStroke', 240)) return;
     this.tone(420, 560, 0.06, 'sine', 0.065, 0);
   }
+
+  /**
+   * Shimmering star-wish arpeggio when wishing on a shooting star or Star Jar.
+   */
+  playWishChime() {
+    if (!this.canPlay('wishChime', 280)) return;
+    this.tone(659, 698, 0.14, 'triangle', 0.12, 0);
+    this.tone(784, 830, 0.16, 'triangle', 0.11, 0.09);
+    this.tone(987, 1046, 0.2, 'sine', 0.12, 0.18);
+    this.tone(1318, 1567, 0.28, 'sine', 0.1, 0.28);
+  }
+
+  /**
+   * Warm lantern switch click + soft chime.
+   */
+  playLanternClick(lit: boolean) {
+    if (!this.canPlay('lanternClick', 160)) return;
+    if (lit) {
+      this.tone(440, 587, 0.11, 'triangle', 0.1, 0);
+      this.tone(659, 784, 0.16, 'sine', 0.09, 0.06);
+    } else {
+      this.tone(494, 349, 0.12, 'sine', 0.08, 0);
+    }
+  }
 }
 
 export const kittenAudio = new ChiptuneAudio();

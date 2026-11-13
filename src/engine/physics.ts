@@ -5,8 +5,10 @@ import {
   DesktopSnapshot,
   FeatherWandState,
   GiftBoxEntity,
+  LanternEntity,
   LavenderPlantEntity,
   MonitorRect,
+  ShootingStarEntity,
   ToyEntity,
   WalkableLedge,
   WindowPlatform,
@@ -330,6 +332,7 @@ export function stepButterflies(
   butterflies: ButterflyEntity[],
   monitors: MonitorRect[],
   dt: number,
+  lantern?: LanternEntity,
 ): void {
   for (let i = butterflies.length - 1; i >= 0; i--) {
     const b = butterflies[i];
@@ -338,6 +341,19 @@ export function stepButterflies(
     if (b.life >= b.maxLife) {
       butterflies.splice(i, 1);
       continue;
+    }
+
+    if (!b.booped && b.kind === 'firefly' && lantern?.active && lantern.lit) {
+      const targetX = lantern.x + Math.cos(b.phase * 2.1) * 34;
+      const dx = targetX - b.x;
+      if (Math.abs(dx) > 10 && Math.abs(dx) < 420) {
+        b.vx += Math.sign(dx) * 48 * dt;
+        b.vx = Math.max(-72, Math.min(72, b.vx));
+      }
+      if (typeof b.baseY === 'number') {
+        const lanternY = lantern.y - 24;
+        b.baseY += (lanternY - b.baseY) * Math.min(1, dt * 0.7);
+      }
     }
 
     b.x += b.vx * dt;
@@ -480,6 +496,38 @@ export function stepGiftBoxPhysics(
     box.cooldown = Math.max(0, box.cooldown - dt);
   }
   stepSurfacePropPhysics(box, ledges, monitors, dt, 26, isDragging);
+}
+
+/**
+ * Physics step for the placeable Moonlight Lantern.
+ */
+export function stepLanternPhysics(
+  lantern: LanternEntity,
+  ledges: WalkableLedge[],
+  monitors: MonitorRect[],
+  dt: number,
+  isDragging = false,
+): void {
+  stepSurfacePropPhysics(lantern, ledges, monitors, dt, 16, isDragging);
+}
+
+/**
+ * Advances streaking shooting stars across the upper desktop.
+ */
+export function stepShootingStars(
+  stars: ShootingStarEntity[],
+  dt: number,
+): void {
+  for (let i = stars.length - 1; i >= 0; i--) {
+    const star = stars[i];
+    star.life += dt;
+    if (star.wished || star.life >= star.maxLife) {
+      stars.splice(i, 1);
+      continue;
+    }
+    star.x += star.vx * dt;
+    star.y += star.vy * dt;
+  }
 }
 
 export function stepBubbles(

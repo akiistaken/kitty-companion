@@ -70,6 +70,7 @@ export type AccessoryId =
   | 'witch_hat'
   | 'amethyst_crown'
   | 'lunar_glasses'
+  | 'crescent_crown'
   | 'beret'
   | 'nightcap'
   | 'red_collar'
@@ -167,6 +168,8 @@ export interface LifetimeStats {
   tricksPerformed?: number;
   bubblesPopped?: number;
   boxAmbushes?: number;
+  wishesMade?: number;
+  lanternNaps?: number;
   focusSessionsCompleted: number;
   headBobSeconds: number;
   nightMinutes: number;
@@ -343,6 +346,28 @@ export interface GiftBoxEntity {
   occupied: boolean;
   wiggleTimer: number;
   cooldown: number;
+}
+
+export interface LanternEntity {
+  active: boolean;
+  x: number;
+  y: number;
+  vx?: number;
+  vy: number;
+  grounded: boolean;
+  lit: boolean;
+}
+
+export interface ShootingStarEntity {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  wished?: boolean;
 }
 
 export type QuickWheelActionId =

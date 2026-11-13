@@ -27,6 +27,7 @@ export const HudWindow: React.FC = () => {
   const [plantActive, setPlantActive] = useState<boolean>(false);
   const [brushActive, setBrushActive] = useState<boolean>(false);
   const [giftBoxActive, setGiftBoxActive] = useState<boolean>(false);
+  const [lanternActive, setLanternActive] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -58,6 +59,9 @@ export const HudWindow: React.FC = () => {
         }
         if (typeof parsed.giftBoxActive === 'boolean') {
           setGiftBoxActive(parsed.giftBoxActive);
+        }
+        if (typeof parsed.lanternActive === 'boolean') {
+          setLanternActive(parsed.lanternActive);
         }
       } catch {
         // Ignore malformed sync packets
@@ -135,6 +139,7 @@ export const HudWindow: React.FC = () => {
       plantActive={plantActive}
       brushActive={brushActive}
       giftBoxActive={giftBoxActive}
+      lanternActive={lanternActive}
       onClose={handleClose}
       onRename={handleRename}
       onSelectCoat={handleSelectCoat}
@@ -148,6 +153,9 @@ export const HudWindow: React.FC = () => {
       onTogglePlant={() => sendAction({ type: 'togglePlant' })}
       onToggleBrush={() => sendAction({ type: 'toggleBrush' })}
       onToggleGiftBox={() => sendAction({ type: 'toggleGiftBox' })}
+      onToggleLantern={() => sendAction({ type: 'toggleLantern' })}
+      onSummonShootingStar={() => sendAction({ type: 'summonShootingStar' })}
+      onMakeJarWish={() => sendAction({ type: 'makeJarWish' })}
       onSpawnBubbles={() => sendAction({ type: 'spawnBubbles' })}
       onDoTrick={() => sendAction({ type: 'doTrick' })}
       onClearYarn={() => sendAction({ type: 'clearYarn' })}

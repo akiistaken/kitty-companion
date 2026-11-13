@@ -1,6 +1,6 @@
 [package]
 name = "kitten"
-version = "1.0.1"
+version = "1.0.0"
 description = "Interactive pixel-art desktop overlay cat companion"
 authors = ["Aki"]
 edition = "2021"

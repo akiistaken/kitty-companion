@@ -8,8 +8,11 @@ import {
   FocusState,
   GiftBoxEntity,
   KittenSaveState,
+  LanternEntity,
   LavenderPlantEntity,
+  MonitorRect,
   Particle,
+  ShootingStarEntity,
   ToyEntity,
   WalkableLedge,
 } from '../types/kitten';
@@ -268,6 +271,7 @@ export function stepCatAI(params: {
   featherWand?: FeatherWandState;
   plant?: LavenderPlantEntity;
   giftBox?: GiftBoxEntity;
+  lantern?: LanternEntity;
   laserActive?: boolean;
   popComboRef?: { count: number };
 }): StepResult {
@@ -288,6 +292,7 @@ export function stepCatAI(params: {
     featherWand,
     plant,
     giftBox,
+    lantern,
     laserActive = false,
     popComboRef,
   } = params;
@@ -1094,7 +1099,7 @@ export function stepCatAI(params: {
       }
 
       if (cat.stateTimer <= 0) {
-        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant);
+        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
       }
       break;
     }
@@ -1192,7 +1197,7 @@ export function stepCatAI(params: {
           cat.cuddledYarnColor ?? undefined,
         );
         cat.cuddledYarnColor = null;
-        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant);
+        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
       }
       break;
     }
@@ -1217,7 +1222,7 @@ export function stepCatAI(params: {
       if (ev.evolvedTo) result.evolvedLabel = ev.evolvedTo;
       if (ev.unlockedAchievements[0]) result.achievementBanner = ev.unlockedAchievements[0].title;
       if (cat.stateTimer <= 0 || !musicPlaying) {
-        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant);
+        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
       }
       break;
     }
@@ -1245,7 +1250,7 @@ export function stepCatAI(params: {
           cat.stateTimer = 1.5;
           cat.vx = 0;
         } else {
-          chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox);
+          chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
         }
       }
       break;
@@ -1253,7 +1258,7 @@ export function stepCatAI(params: {
 
     case 'stretch': {
       if (cat.stateTimer <= 0) {
-        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox);
+        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
       }
       break;
     }
@@ -1273,7 +1278,7 @@ export function stepCatAI(params: {
         });
       }
       if (cat.stateTimer <= 0) {
-        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox);
+        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
       }
       break;
     }
@@ -1521,7 +1526,7 @@ export function stepCatAI(params: {
     default: {
       save.energy = Math.min(100, save.energy + dt * 1.4);
       if (cat.stateTimer <= 0) {
-        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox);
+        chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
       }
       break;
     }
@@ -1599,6 +1604,7 @@ function chooseNextGroundedState(
   cushion?: CushionEntity,
   plant?: LavenderPlantEntity,
   giftBox?: GiftBoxEntity,
+  lantern?: LanternEntity,
 ) {
   if (focus.active) {
     cat.state = 'sleep';
@@ -1660,6 +1666,29 @@ function chooseNextGroundedState(
       cat.facing = dxPlant >= 0 ? 1 : -1;
       cat.vx = cat.facing * 78;
       cat.stateTimer = Math.min(2.4, Math.abs(dxPlant) / 78);
+      return;
+    }
+  }
+
+  // Placed Moonlight Lantern (lit) -> curl up beside the warm amber glow!
+  if (lantern?.active && lantern.lit && lantern.grounded && Math.abs(catBottomY - lantern.y) < 18) {
+    const dxLantern = lantern.x - catCenterX;
+    if (Math.abs(dxLantern) < 56 && Math.random() < (lateNight ? 0.65 : 0.45)) {
+      cat.state = 'sleep';
+      cat.vx = 0;
+      cat.facing = dxLantern >= 0 ? 1 : -1;
+      cat.stateTimer = 5.5 + Math.random() * 3.5;
+      cat.statusBubble = 'Warm lantern glow 🏮';
+      cat.statusBubbleTimer = 2.6;
+      save.stats.lanternNaps = (save.stats.lanternNaps ?? 0) + 1;
+      applyXpAndEvaluate(save, 6);
+      kittenAudio.playPurr('soft');
+      return;
+    } else if (Math.abs(dxLantern) >= 56 && Math.abs(dxLantern) < 380 && Math.random() < (lateNight ? 0.5 : 0.32)) {
+      cat.state = 'walk';
+      cat.facing = dxLantern >= 0 ? 1 : -1;
+      cat.vx = cat.facing * 72;
+      cat.stateTimer = Math.min(2.8, (Math.abs(dxLantern) - 32) / 72);
       return;
     }
   }
@@ -2054,5 +2083,71 @@ export function brushCat(
   }
 
   recordProgressionFeedback(applyXpAndEvaluate(save, 1), result);
+  return result;
+}
+
+/**
+ * Creates a shooting star streaking across the upper desktop sky.
+ */
+export function spawnShootingStar(monitors: MonitorRect[]): ShootingStarEntity | null {
+  const mon = monitors.find((m) => m.isPrimary) ?? monitors[0];
+  if (!mon) return null;
+  const fromLeft = Math.random() < 0.5;
+  const startX = fromLeft
+    ? mon.workX + mon.workWidth * (0.06 + Math.random() * 0.28)
+    : mon.workX + mon.workWidth * (0.66 + Math.random() * 0.28);
+  const startY = mon.workY + mon.workHeight * (0.08 + Math.random() * 0.22);
+  const speed = 220 + Math.random() * 70;
+  const colors = ['#fef08a', '#e9d5ff', '#fbcfe8'];
+  return {
+    id: `star-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    x: startX,
+    y: startY,
+    vx: (fromLeft ? 1 : -1) * speed,
+    vy: 52 + Math.random() * 38,
+    life: 0,
+    maxLife: 2.3 + Math.random() * 0.6,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    wished: false,
+  };
+}
+
+/**
+ * Grants a wish when clicking a streaking shooting star.
+ */
+export function wishOnShootingStar(
+  star: ShootingStarEntity,
+  cat: CatRuntime,
+  save: KittenSaveState,
+  particles: Particle[],
+): StepResult {
+  const result: StepResult = { holdCursorTarget: null };
+  star.wished = true;
+  save.stats.wishesMade = (save.stats.wishesMade ?? 0) + 1;
+  save.bond = Math.min(100, save.bond + 5);
+  save.energy = Math.min(100, save.energy + 15);
+  save.treats = Math.min(100, save.treats + 15);
+
+  cat.blushTimer = 2.8;
+  cat.statusBubble = 'Make a wish! 🌠';
+  cat.statusBubbleTimer = 2.6;
+  kittenAudio.playWishChime();
+
+  const colors = ['#fef08a', '#d8b4fe', '#c084fc', '#ffffff'];
+  for (let i = 0; i < 12; i++) {
+    const angle = (Math.PI * 2 * i) / 12;
+    const speed = 42 + Math.random() * 68;
+    addParticle(particles, {
+      kind: i % 4 === 0 ? 'moon' : 'sparkle',
+      x: star.x,
+      y: star.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 18,
+      maxLife: 1.05,
+      color: colors[i % colors.length],
+    });
+  }
+
+  recordProgressionFeedback(applyXpAndEvaluate(save, 18), result);
   return result;
 }

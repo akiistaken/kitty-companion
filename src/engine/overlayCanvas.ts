@@ -7,12 +7,14 @@ import {
   FocusState,
   GiftBoxEntity,
   KittenSaveState,
+  LanternEntity,
   LavenderPlantEntity,
   LoveNoteEntity,
   MonitorRect,
   OnboardingPhase,
   Particle,
   QuickWheelState,
+  ShootingStarEntity,
   ToyEntity,
 } from '../types/kitten';
 import {
@@ -28,11 +30,13 @@ import {
   drawLavenderCushion,
   drawLavenderPlant,
   drawLoveNoteOverlay,
+  drawMoonlightLantern,
   drawPixelButterfly,
   drawPixelCat,
   drawPixelSoapBubble,
   drawPixelToy,
   drawQuickWheel,
+  drawShootingStar,
   drawStarBrushCursor,
   drawVioletLaserDot,
   getStageDimensions,
@@ -62,6 +66,8 @@ export function stepAndDrawOverlay(params: {
   featherWand?: FeatherWandState;
   plant?: LavenderPlantEntity;
   giftBox?: GiftBoxEntity;
+  lantern?: LanternEntity;
+  shootingStars?: ShootingStarEntity[];
   laserActive?: boolean;
   brushActive?: boolean;
   quickWheel?: QuickWheelState;
@@ -90,6 +96,8 @@ export function stepAndDrawOverlay(params: {
     featherWand,
     plant,
     giftBox,
+    lantern,
+    shootingStars = [],
     laserActive = false,
     brushActive = false,
     quickWheel,
@@ -176,12 +184,20 @@ export function stepAndDrawOverlay(params: {
     drawPixelToy(ctx, toy.kind, toy.x, toy.y, toy.rotation, toy.color);
   }
 
-  // Render placeable Lavender Cushion, Potted Lavender, & Purple Gift Box
+  // Render shooting stars across upper desktop sky
+  for (const star of shootingStars) {
+    drawShootingStar(ctx, star);
+  }
+
+  // Render placeable Lavender Cushion, Potted Lavender, Moonlight Lantern & Purple Gift Box
   if (cushion?.active) {
     drawLavenderCushion(ctx, cushion.x, cushion.y);
   }
   if (plant?.active) {
     drawLavenderPlant(ctx, plant.x, plant.y, cat.animTime, plant.swayTimer);
+  }
+  if (lantern?.active) {
+    drawMoonlightLantern(ctx, lantern, cat.animTime);
   }
   if (giftBox?.active) {
     drawGiftBox(ctx, giftBox, save.coat, cat.animTime);

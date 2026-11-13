@@ -8,11 +8,11 @@
 
     $ErrorActionPreference = 'Stop'
 
-    $appName = 'Kitten'
-    $expectedVersion = '0.1.2'
-    $installerFileName = 'Kitten_0.1.2_x64-setup.exe'
-    $installerUrl = 'https://github.com/akiistaken/kitty-companion/releases/download/v0.1.2/Kitten_0.1.2_x64-setup.exe'
-    $expectedSha256 = '382B8F1FDE12118203BB03AE7E90F69D6E2A1A5BE243B34CFC24F81695B303C2'
+    $appName = 'Kitty Night'
+    $expectedVersion = '1.0.0'
+    $installerFileName = 'Kitty.Night_1.0.0_x64-setup.exe'
+    $installerUrl = 'https://github.com/akiistaken/kitty-companion/releases/download/v1.0.0/Kitty.Night_1.0.0_x64-setup.exe'
+    $expectedSha256 = '2C5A5CA24A931184D47DDE4338A60B49A9B9382766B6D4884269472A9F38A327'
     $silentArgs = @('/S')
     $successExitCodes = @(0)
 
@@ -100,7 +100,7 @@
             throw "$appName installer failed with exit code $exitCode. $detail"
         }
 
-        $uninstallRegPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Kitten'
+        $uninstallRegPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Kitty Night'
         if (-not (Test-Path -LiteralPath $uninstallRegPath)) {
             throw "Installer completed with exit code 0, but uninstall registration was not found at '$uninstallRegPath'."
         }
@@ -113,7 +113,7 @@
 
         $installLocation = ([string]$regProps.InstallLocation).Trim('"')
         if ([string]::IsNullOrWhiteSpace($installLocation)) {
-            $installLocation = Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Kitten'
+            $installLocation = Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Kitty Night'
         }
 
         $installedExe = Join-Path -Path $installLocation -ChildPath 'kitten.exe'

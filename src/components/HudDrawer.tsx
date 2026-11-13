@@ -58,6 +58,7 @@ interface HudDrawerProps {
   plantActive?: boolean;
   brushActive?: boolean;
   giftBoxActive?: boolean;
+  lanternActive?: boolean;
   x?: number;
   y?: number;
   standalone?: boolean;
@@ -74,6 +75,9 @@ interface HudDrawerProps {
   onTogglePlant?: () => void;
   onToggleBrush?: () => void;
   onToggleGiftBox?: () => void;
+  onToggleLantern?: () => void;
+  onSummonShootingStar?: () => void;
+  onMakeJarWish?: () => void;
   onSpawnBubbles?: () => void;
   onDoTrick?: () => void;
   onClearYarn?: () => void;
@@ -125,6 +129,7 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
   plantActive = false,
   brushActive = false,
   giftBoxActive = false,
+  lanternActive = false,
   x = 0,
   y = 0,
   standalone = false,
@@ -141,6 +146,9 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
   onTogglePlant,
   onToggleBrush,
   onToggleGiftBox,
+  onToggleLantern,
+  onSummonShootingStar,
+  onMakeJarWish,
   onSpawnBubbles,
   onDoTrick,
   onClearYarn,
@@ -497,9 +505,21 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
                   Earned from Focus Naps &amp; butterfly boops
                 </div>
               </div>
-              <span className="star-jar-count">
-                ★ {save.starJarCount ?? 0}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  className={`pixel-btn ${(save.starJarCount ?? 0) >= 5 ? 'pixel-btn--primary' : ''}`}
+                  disabled={(save.starJarCount ?? 0) < 5}
+                  onClick={() => onMakeJarWish?.()}
+                  title="Spend 5 collected stars for a cosmic wish (+18 XP, +5 Bond, +15 Energy/Treats)"
+                >
+                  <Sparkles size={13} />
+                  <span>Wish (5 ★)</span>
+                </button>
+                <span className="star-jar-count">
+                  ★ {save.starJarCount ?? 0}
+                </span>
+              </div>
             </div>
 
             <div>
@@ -776,6 +796,24 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
               </button>
               <button
                 type="button"
+                className={`pixel-btn ${lanternActive ? 'pixel-btn--primary' : ''}`}
+                onClick={() => onToggleLantern?.()}
+                title="Place a Moonlight Lantern (click to toggle glow, drag to move, right-click to remove)"
+              >
+                <Moon size={14} />
+                <span>{lanternActive ? 'Hide Lantern' : 'Moon Lantern'}</span>
+              </button>
+              <button
+                type="button"
+                className="pixel-btn"
+                onClick={() => onSummonShootingStar?.()}
+                title="Summon a streaking shooting star across the sky — click it to make a wish!"
+              >
+                <Star size={14} />
+                <span>Shooting Star</span>
+              </button>
+              <button
+                type="button"
                 className="pixel-btn"
                 onClick={() => onSnapMemory?.()}
                 title="Save a cute Polaroid snapshot to your Scrapbook!"
@@ -831,6 +869,12 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
               <div className="stat-cell">
                 <div className="stat-cell-label">Box Ambushes</div>
                 <div className="stat-cell-val">{save.stats.boxAmbushes ?? 0}</div>
+              </div>
+              <div className="stat-cell">
+                <div className="stat-cell-label">Wishes / Lantern Naps</div>
+                <div className="stat-cell-val">
+                  {save.stats.wishesMade ?? 0} / {save.stats.lanternNaps ?? 0}
+                </div>
               </div>
               <div className="stat-cell">
                 <div className="stat-cell-label">Favorite Window</div>
@@ -1125,7 +1169,7 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
             <div className="setting-card">
               <div className="section-label">About</div>
               <p className="timeline-detail">
-                Kitty Night v1.0.1
+                Kitty Night v1.0.0
               </p>
               <p className="timeline-detail">
                 Developed by: Akii 😸✨

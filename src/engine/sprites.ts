@@ -5,10 +5,12 @@ import {
   CatBehaviorState,
   CoatId,
   GiftBoxEntity,
+  LanternEntity,
   LifeStage,
   LoveNoteEntity,
   QuickWheelActionId,
   QuickWheelState,
+  ShootingStarEntity,
   ToyKind,
 } from '../types/kitten';
 
@@ -1241,6 +1243,12 @@ function drawHead(
     px(midX - 1, hy - 7, '#6c42ab', 2, 1);
     px(midX - 3, hy - 2, '#c8a6f7', 6, 1); // lavender band
     px(midX, hy - 2, '#f7ca3e', 1, 1); // gold buckle star
+  } else if (opts.accessory === 'crescent_crown') {
+    px(midX - 3, hy - 3, '#c8a6f7', 6, 1);
+    px(midX - 2, hy - 4, '#fde68a', 4, 1);
+    px(midX - 1, hy - 5, '#fef3c7', 1, 1);
+    px(midX + 1, hy - 5, '#fef3c7', 1, 1);
+    px(midX, hy - 6, '#a78bfa', 1, 1);
   }
 }
 
@@ -1837,6 +1845,103 @@ export function getQuickWheelLayout(
       active,
     };
   });
+}
+
+export function drawMoonlightLantern(
+  ctx: CanvasRenderingContext2D,
+  lantern: LanternEntity,
+  animTime: number,
+): void {
+  if (!lantern.active) return;
+  const s = 3;
+  const flicker = Math.sin(animTime * 3.4) * 0.08 + 0.92;
+  const baseX = Math.round(lantern.x);
+  const baseY = Math.round(lantern.y);
+
+  ctx.save();
+  if (lantern.lit) {
+    const grad = ctx.createRadialGradient(baseX, baseY - 22, 4, baseX, baseY - 22, 68 * flicker);
+    grad.addColorStop(0, 'rgba(254, 240, 172, 0.38)');
+    grad.addColorStop(0.45, 'rgba(196, 160, 248, 0.22)');
+    grad.addColorStop(1, 'rgba(196, 160, 248, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(baseX, baseY - 22, 68 * flicker, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const ox = baseX - 5 * s;
+  const oy = baseY - 12 * s;
+  const px = (gx: number, gy: number, color: string, w = 1, h = 1) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(ox + gx * s, oy + gy * s, w * s, h * s);
+  };
+
+  // Top carrying ring + lavender cap
+  px(4, 0, '#d8b4fe', 2, 1);
+  px(3, 1, '#3b2458', 4, 1);
+  px(2, 2, '#4c2c7a', 6, 1);
+  px(1, 3, '#6d44a8', 8, 1);
+  px(2, 3, '#a78bfa', 6, 1);
+
+  // Glass body & frame
+  px(2, 4, '#2d1b46', 1, 6);
+  px(7, 4, '#2d1b46', 1, 6);
+  if (lantern.lit) {
+    px(3, 4, '#fef3c7', 4, 6);
+    px(4, 5, '#fde047', 2, 4);
+    px(4, 6, '#ffffff', 1, 2);
+  } else {
+    px(3, 4, '#4c3575', 4, 6);
+    px(4, 5, '#6b5399', 2, 4);
+  }
+  // Tiny crescent motif on front bar
+  px(4, 4, '#c084fc', 2, 1);
+
+  // Pedestal base
+  px(1, 10, '#3b2458', 8, 1);
+  px(2, 11, '#26143b', 6, 1);
+  ctx.restore();
+}
+
+export function drawShootingStar(
+  ctx: CanvasRenderingContext2D,
+  star: ShootingStarEntity,
+): void {
+  if (star.wished) return;
+  const t = star.life / Math.max(0.01, star.maxLife);
+  const alpha = t < 0.12 ? t / 0.12 : t > 0.8 ? Math.max(0, (1 - t) / 0.2) : 1;
+  if (alpha <= 0.01) return;
+
+  const speed = Math.hypot(star.vx, star.vy) || 1;
+  const tailLen = 58;
+  const tx = star.x - (star.vx / speed) * tailLen;
+  const ty = star.y - (star.vy / speed) * tailLen;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const grad = ctx.createLinearGradient(tx, ty, star.x, star.y);
+  grad.addColorStop(0, 'rgba(192, 132, 252, 0)');
+  grad.addColorStop(0.55, 'rgba(216, 180, 254, 0.7)');
+  grad.addColorStop(1, 'rgba(254, 249, 195, 0.98)');
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(star.x, star.y);
+  ctx.stroke();
+
+  // Crisp pixel star head
+  const s = 3;
+  const cx = Math.round(star.x);
+  const cy = Math.round(star.y);
+  ctx.fillStyle = star.color || '#fef08a';
+  ctx.fillRect(cx - s, cy - s, s * 2, s * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(cx - 1, cy - s * 2, 2, s * 4);
+  ctx.fillRect(cx - s * 2, cy - 1, s * 4, 2);
+  ctx.restore();
 }
 
 export function drawQuickWheel(

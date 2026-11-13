@@ -10,6 +10,7 @@ export interface HudSyncPayload {
   plantActive?: boolean;
   brushActive?: boolean;
   giftBoxActive?: boolean;
+  lanternActive?: boolean;
 }
 
 export type HudAction =
@@ -25,6 +26,9 @@ export type HudAction =
   | { type: 'togglePlant' }
   | { type: 'toggleBrush' }
   | { type: 'toggleGiftBox' }
+  | { type: 'toggleLantern' }
+  | { type: 'summonShootingStar' }
+  | { type: 'makeJarWish' }
   | { type: 'spawnBubbles' }
   | { type: 'doTrick' }
   | { type: 'clearYarn' }

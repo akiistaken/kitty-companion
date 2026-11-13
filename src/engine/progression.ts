@@ -32,6 +32,7 @@ export const ACCESSORY_META: Record<AccessoryId, { label: string; hint: string }
   lunar_glasses: { label: 'Lunar Glasses', hint: 'Unlock: Lavender Sniffer (3 plant sniffs)' },
   beret: { label: 'Cozy Beret', hint: 'Unlock: Beat Keeper (20s music bob)' },
   nightcap: { label: 'Sleepy Nightcap', hint: 'Unlock: Focus Companion (1 Focus Nap)' },
+  crescent_crown: { label: 'Crescent Halo', hint: 'Unlock: Stargazer (3 Star Wishes)' },
   red_collar: { label: 'Red Collar', hint: 'Unlock: Titlebar Napper (3 window naps)' },
   heart_collar: { label: 'Heart Collar', hint: 'Unlock: Sweet Tooth (5 treats eaten)' },
   tiny_scarf: { label: 'Cozy Scarf', hint: 'Unlock: Purr Machine (15 pets received)' },
@@ -221,6 +222,22 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     target: 4,
     statKey: 'stageLevel',
   },
+  {
+    id: 'stargazer',
+    title: 'Stargazer Kitty',
+    description: 'Wish on 3 shooting stars or Star Jar constellations.',
+    rewardAccessory: 'crescent_crown',
+    rewardLabel: 'Crescent Halo',
+    target: 3,
+    statKey: 'wishesMade',
+  },
+  {
+    id: 'lantern_keeper',
+    title: 'Lantern Keeper',
+    description: 'Take 3 cozy midnight naps beside the Moonlight Lantern.',
+    target: 3,
+    statKey: 'lanternNaps',
+  },
 ];
 
 export function createInitialSaveState(
@@ -270,6 +287,8 @@ export function createInitialSaveState(
       headBobSeconds: 0,
       nightMinutes: 0,
       studyBuddyMinutes: 0,
+      wishesMade: 0,
+      lanternNaps: 0,
       visitedApps: [],
       appSleepCounts: {},
     },
@@ -409,6 +428,14 @@ export const MEMENTO_DEFS: MementoDef[] = [
     statKey: 'tricksPerformed',
     target: 3,
   },
+  {
+    id: 'moon_stone',
+    title: 'Moonstone Charm',
+    description: 'A luminescent crescent pebble caught from a shooting-star wish.',
+    icon: '🌙',
+    statKey: 'wishesMade',
+    target: 1,
+  },
 ];
 
 export interface ProgressionEvents {
@@ -506,6 +533,30 @@ export function addPolaroidMemory(
 export function removePolaroidMemory(save: KittenSaveState, id: string): void {
   if (!Array.isArray(save.memories)) return;
   save.memories = save.memories.filter((m) => m.id !== id);
+}
+
+/**
+ * Spend 5 collected stars from the Lavender Star Jar to grant a cosmic wish.
+ */
+export function spendStarJarForWish(
+  save: KittenSaveState,
+): { ok: true; events: ProgressionEvents } | { ok: false } {
+  const count = save.starJarCount ?? 0;
+  if (count < 5) {
+    return { ok: false };
+  }
+  save.starJarCount = count - 5;
+  save.stats.wishesMade = (save.stats.wishesMade ?? 0) + 1;
+  save.bond = Math.min(100, save.bond + 5);
+  save.energy = Math.min(100, save.energy + 15);
+  save.treats = Math.min(100, save.treats + 15);
+  const events = applyXpAndEvaluate(save, 18);
+  pushTimelineEntry(save, {
+    kind: 'milestone',
+    title: 'Made a Star Jar Wish!',
+    detail: `Spent 5 collected stars from the Lavender Star Jar for cosmic luck (${save.starJarCount} ★ left).`,
+  });
+  return { ok: true, events };
 }
 
 export function saveLoveNote(save: KittenSaveState, text: string): SavedLoveNote {

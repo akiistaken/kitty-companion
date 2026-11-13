@@ -4,7 +4,9 @@ import { listen } from '@tauri-apps/api/event';
 import { OnboardingOverlay } from './components/OnboardingOverlay';
 import {
   brushCat,
+  isLateNightHour,
   popBubble,
+  spawnShootingStar,
   spawnYarnVanishParticles,
   stepCatAI,
   triggerCatTrick,
@@ -12,6 +14,7 @@ import {
   triggerGiftBoxAmbush,
   triggerGreeting,
   triggerPokeCat,
+  wishOnShootingStar,
 } from './engine/ai';
 import { getEggSceneLayout, getLetterpadRect } from './engine/onboardingSprites';
 import { stepAndDrawOverlay } from './engine/overlayCanvas';
@@ -25,7 +28,9 @@ import {
   stepCushionPhysics,
   stepFeatherWandPhysics,
   stepGiftBoxPhysics,
+  stepLanternPhysics,
   stepPlantPhysics,
+  stepShootingStars,
   stepToysPhysics,
 } from './engine/physics';
 import {
@@ -39,6 +44,7 @@ import {
   pushTimelineEntry,
   removePolaroidMemory,
   saveLoveNote,
+  spendStarJarForWish,
   STAGE_THRESHOLDS,
 } from './engine/progression';
 import { kittenAudio } from './engine/sound';
@@ -61,12 +67,14 @@ import {
   GiftBoxEntity,
   HitRect,
   KittenSaveState,
+  LanternEntity,
   LavenderPlantEntity,
   LoveNoteEntity,
   MonitorRect,
   OnboardingPhase,
   Particle,
   QuickWheelState,
+  ShootingStarEntity,
   ToyEntity,
   ToyKind,
   WalkableLedge,
@@ -154,6 +162,36 @@ export const App: React.FC = () => {
     grounded: false,
     swayTimer: 0,
   });
+  const lanternRef = useRef<LanternEntity>({
+    active: false,
+    lit: true,
+    x: 320,
+    y: 400,
+    vx: 0,
+    vy: 0,
+    grounded: false,
+  });
+  const lanternDragRef = useRef<{
+    dragging: boolean;
+    moved: boolean;
+    offsetX: number;
+    offsetY: number;
+    lastX: number;
+    lastY: number;
+    vx: number;
+    vy: number;
+  }>({
+    dragging: false,
+    moved: false,
+    offsetX: 0,
+    offsetY: 0,
+    lastX: 0,
+    lastY: 0,
+    vx: 0,
+    vy: 0,
+  });
+  const shootingStarsRef = useRef<ShootingStarEntity[]>([]);
+  const shootingStarTimerRef = useRef<number>(48 + Math.random() * 55);
   const cushionDragRef = useRef<{
     dragging: boolean;
     offsetX: number;
@@ -224,6 +262,7 @@ export const App: React.FC = () => {
         plantActive: plantRef.current.active,
         brushActive: brushActiveRef.current,
         giftBoxActive: giftBoxRef.current.active,
+        lanternActive: lanternRef.current.active,
       };
       void invoke('publish_hud_state', { json: JSON.stringify(payload) }).catch(() => {});
     },
@@ -761,6 +800,118 @@ export const App: React.FC = () => {
     publishBridgeState(saveRef.current, focusRef.current);
   }, [publishBridgeState]);
 
+  const toggleLantern = useCallback(() => {
+    if (onboardingPhaseRef.current !== 'done') return;
+    const next = !lanternRef.current.active;
+    if (next) {
+      const catDims = getStageDimensions(
+        saveRef.current.stage,
+        saveRef.current.settings.spriteScale,
+      );
+      const mon =
+        findMonitorForPoint(
+          snapshotRef.current.monitors,
+          catRef.current.x + catDims.width / 2,
+          catRef.current.y + catDims.height,
+        ) ?? getPrimaryMonitor();
+      const spawnX = mon
+        ? Math.max(
+            mon.workX + 42,
+            Math.min(
+              mon.workX + mon.workWidth - 42,
+              catRef.current.x + catDims.width / 2 - catRef.current.facing * 56,
+            ),
+          )
+        : catRef.current.x + catDims.width / 2;
+      const spawnY = Math.max(
+        (mon?.workY ?? 0) + 60,
+        catRef.current.y + catDims.height - 22,
+      );
+      lanternRef.current = {
+        active: true,
+        lit: true,
+        x: spawnX,
+        y: spawnY,
+        vx: (Math.random() < 0.5 ? -1 : 1) * 55,
+        vy: -170,
+        grounded: false,
+      };
+      kittenAudio.playLanternClick(true);
+      catRef.current.statusBubble = 'Moonlight lantern! 🏮';
+      catRef.current.statusBubbleTimer = 2.0;
+    } else {
+      lanternDragRef.current.dragging = false;
+      kittenAudio.playLanternClick(false);
+      spawnYarnVanishParticles(
+        particlesRef.current,
+        lanternRef.current.x,
+        lanternRef.current.y - 16,
+        '#fde68a',
+      );
+      lanternRef.current.active = false;
+    }
+    publishBridgeState(saveRef.current, focusRef.current);
+    wakeLoopRef.current?.();
+  }, [getPrimaryMonitor, publishBridgeState]);
+
+  const summonShootingStar = useCallback(() => {
+    if (onboardingPhaseRef.current !== 'done') return;
+    const star = spawnShootingStar(snapshotRef.current.monitors);
+    if (!star) return;
+    if (shootingStarsRef.current.length >= 3) {
+      shootingStarsRef.current.shift();
+    }
+    shootingStarsRef.current.push(star);
+    catRef.current.statusBubble = 'A shooting star! Click it! 🌠';
+    catRef.current.statusBubbleTimer = 2.4;
+    wakeLoopRef.current?.();
+  }, []);
+
+  const makeJarWish = useCallback(() => {
+    if (onboardingPhaseRef.current !== 'done') return;
+    const res = spendStarJarForWish(saveRef.current);
+    if (!res.ok) {
+      catRef.current.statusBubble = 'Need 5 ★ in Star Jar';
+      catRef.current.statusBubbleTimer = 1.8;
+      return;
+    }
+    const dims = getStageDimensions(saveRef.current.stage, saveRef.current.settings.spriteScale);
+    const cx = catRef.current.x + dims.width / 2;
+    const cy = catRef.current.y + dims.height * 0.4;
+    const colors = ['#fef08a', '#d8b4fe', '#c084fc', '#ffffff'];
+    for (let i = 0; i < 14; i++) {
+      const a = (Math.PI * 2 * i) / 14;
+      const spd = 48 + Math.random() * 64;
+      particlesRef.current.push({
+        id: `jar-wish-${Date.now()}-${i}`,
+        kind: i % 3 === 0 ? 'moon' : 'sparkle',
+        x: cx,
+        y: cy,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd - 20,
+        alpha: 1,
+        life: 0,
+        maxLife: 1.1,
+        color: colors[i % colors.length],
+      });
+    }
+    kittenAudio.playWishChime();
+    catRef.current.blushTimer = 3.0;
+    catRef.current.statusBubble = 'Star Jar wish granted! 🌠';
+    catRef.current.statusBubbleTimer = 2.8;
+    if (res.events.unlockedAchievements.length > 0) {
+      kittenAudio.playUnlock();
+      catRef.current.statusBubble = `Badge: ${res.events.unlockedAchievements[0].title}`;
+      catRef.current.statusBubbleTimer = 3.5;
+    } else if (res.events.unlockedMementos.length > 0) {
+      kittenAudio.playUnlock();
+      catRef.current.statusBubble = `Gift: ${res.events.unlockedMementos[0].title}!`;
+      catRef.current.statusBubbleTimer = 3.5;
+    }
+    commitSave(() => {}, true);
+    wakeLoopRef.current?.();
+  }, [commitSave]);
+
   const doTrick = useCallback(() => {
     if (onboardingPhaseRef.current !== 'done') return;
     const res = triggerCatTrick(catRef.current, saveRef.current, particlesRef.current);
@@ -1032,6 +1183,12 @@ export const App: React.FC = () => {
         case 'toggle_focus':
           toggleFocus();
           break;
+        case 'toggle_lantern':
+          toggleLantern();
+          break;
+        case 'summon_star':
+          summonShootingStar();
+          break;
       }
     }).then((fn) => {
       unlistenTray = fn;
@@ -1096,6 +1253,15 @@ export const App: React.FC = () => {
           case 'toggleGiftBox':
             toggleGiftBox();
             break;
+          case 'toggleLantern':
+            toggleLantern();
+            break;
+          case 'summonShootingStar':
+            summonShootingStar();
+            break;
+          case 'makeJarWish':
+            makeJarWish();
+            break;
           case 'spawnBubbles':
             spawnBubbles();
             break;
@@ -1149,6 +1315,9 @@ export const App: React.FC = () => {
             plantRef.current.active = false;
             giftBoxRef.current.active = false;
             giftBoxRef.current.occupied = false;
+            lanternRef.current.active = false;
+            lanternDragRef.current.dragging = false;
+            shootingStarsRef.current = [];
             loveNoteRef.current.active = false;
             smokeTimerRef.current = 0;
             hatchElapsedRef.current = 0;
@@ -1171,6 +1340,9 @@ export const App: React.FC = () => {
             plantRef.current.active = false;
             giftBoxRef.current.active = false;
             giftBoxRef.current.occupied = false;
+            lanternRef.current.active = false;
+            lanternDragRef.current.dragging = false;
+            shootingStarsRef.current = [];
             loveNoteRef.current.active = false;
             smokeTimerRef.current = 0;
             hatchElapsedRef.current = 0;
@@ -1360,6 +1532,26 @@ export const App: React.FC = () => {
           });
         }
 
+        if (lanternRef.current.active) {
+          rects.push({
+            x: lanternRef.current.x - 18,
+            y: lanternRef.current.y - 38,
+            width: 36,
+            height: 42,
+          });
+        }
+
+        for (const star of shootingStarsRef.current) {
+          if (!star.wished) {
+            rects.push({
+              x: star.x - 28,
+              y: star.y - 22,
+              width: 56,
+              height: 44,
+            });
+          }
+        }
+
         for (const bubble of bubblesRef.current) {
           const pad = bubble.radius + 8;
           rects.push({
@@ -1412,6 +1604,7 @@ export const App: React.FC = () => {
         cushionDragRef.current.dragging ||
         plantDragRef.current.dragging ||
         giftBoxDragRef.current.dragging ||
+        lanternDragRef.current.dragging ||
         featherWandDragRef.current.dragging;
 
       let key = pointerLocked ? '1|' : '0|';
@@ -1503,10 +1696,12 @@ export const App: React.FC = () => {
         quickWheelRef.current.active ||
         butterfliesRef.current.length > 0 ||
         bubblesRef.current.length > 0 ||
+        shootingStarsRef.current.length > 0 ||
         toysRef.current.some((t) => !t.settled) ||
         (featherWandRef.current.active && !featherWandRef.current.grounded) ||
         (cushionRef.current.active && !cushionRef.current.grounded) ||
         (plantRef.current.active && (!plantRef.current.grounded || plantRef.current.swayTimer > 0)) ||
+        (lanternRef.current.active && !lanternRef.current.grounded) ||
         (giftBoxRef.current.active &&
           (!giftBoxRef.current.grounded || giftBoxRef.current.wiggleTimer > 0 || giftBoxRef.current.occupied))
       ) {
@@ -1537,6 +1732,7 @@ export const App: React.FC = () => {
         cat.state === 'box_hide' ||
         cat.state === 'peek' ||
         particlesRef.current.length > 0 ||
+        (lanternRef.current.active && lanternRef.current.lit) ||
         loveNoteRef.current.active
       ) {
         return 55;
@@ -1705,15 +1901,30 @@ export const App: React.FC = () => {
             }
           }
 
-          // Physics for toys, butterflies & lavender cushion
+          // Late-night shooting star spawner
+          if (workingSave.settings.lateNightEnabled && isLateNightHour()) {
+            shootingStarTimerRef.current -= dt;
+            if (shootingStarTimerRef.current <= 0) {
+              shootingStarTimerRef.current = 55 + Math.random() * 65;
+              if (shootingStarsRef.current.length < 1 && snap.monitors.length > 0) {
+                const star = spawnShootingStar(snap.monitors);
+                if (star) shootingStarsRef.current.push(star);
+              }
+            }
+          }
+
+          // Physics for toys, butterflies, shooting stars & desktop props
           if (toysRef.current.length > 0) {
             stepToysPhysics(toysRef.current, ledges, snap.windows, snap.monitors, dt);
           }
           if (butterfliesRef.current.length > 0) {
-            stepButterflies(butterfliesRef.current, snap.monitors, dt);
+            stepButterflies(butterfliesRef.current, snap.monitors, dt, lanternRef.current);
           }
           if (bubblesRef.current.length > 0) {
             stepBubbles(bubblesRef.current, snap.monitors, dt);
+          }
+          if (shootingStarsRef.current.length > 0) {
+            stepShootingStars(shootingStarsRef.current, dt);
           }
           if (cushionRef.current.active) {
             stepCushionPhysics(
@@ -1731,6 +1942,15 @@ export const App: React.FC = () => {
               snap.monitors,
               dt,
               plantDragRef.current.dragging,
+            );
+          }
+          if (lanternRef.current.active) {
+            stepLanternPhysics(
+              lanternRef.current,
+              ledges,
+              snap.monitors,
+              dt,
+              lanternDragRef.current.dragging,
             );
           }
           if (giftBoxRef.current.active) {
@@ -1819,6 +2039,7 @@ export const App: React.FC = () => {
               featherWand: featherWandRef.current,
               plant: plantRef.current,
               giftBox: giftBoxRef.current,
+              lantern: lanternRef.current,
               laserActive: laserActiveRef.current,
               popComboRef: bubbleComboRef.current,
             });
@@ -1896,6 +2117,7 @@ export const App: React.FC = () => {
           !quickWheelRef.current.active &&
           butterfliesRef.current.length === 0 &&
           bubblesRef.current.length === 0 &&
+          shootingStarsRef.current.length === 0 &&
           !giftBoxRef.current.occupied &&
           giftBoxRef.current.wiggleTimer <= 0
         ) {
@@ -1917,6 +2139,9 @@ export const App: React.FC = () => {
           }
           if (plantRef.current.active) {
             extras += `p:${Math.round(plantRef.current.x)},${Math.round(plantRef.current.y)},${plantRef.current.swayTimer > 0 ? Math.floor(cat.animTime * 12) : 0};`;
+          }
+          if (lanternRef.current.active) {
+            extras += `ln:${Math.round(lanternRef.current.x)},${Math.round(lanternRef.current.y)},${lanternRef.current.lit ? Math.floor(cat.animTime * 4) : -1};`;
           }
           if (giftBoxRef.current.active) {
             extras += `gb:${Math.round(giftBoxRef.current.x)},${Math.round(giftBoxRef.current.y)};`;
@@ -1979,6 +2204,8 @@ export const App: React.FC = () => {
               featherWand: featherWandRef.current,
               plant: plantRef.current,
               giftBox: giftBoxRef.current,
+              lantern: lanternRef.current,
+              shootingStars: shootingStarsRef.current,
               laserActive: laserActiveRef.current,
               brushActive: brushActiveRef.current,
               quickWheel: quickWheelRef.current,
@@ -2167,6 +2394,28 @@ export const App: React.FC = () => {
               toggleHud();
               break;
           }
+          return;
+        }
+      }
+
+      for (const star of shootingStarsRef.current) {
+        if (!star.wished && Math.hypot(vx - star.x, vy - star.y) <= 28) {
+          const wishRes = wishOnShootingStar(
+            star,
+            catRef.current,
+            saveRef.current,
+            particlesRef.current,
+          );
+          if (wishRes.achievementBanner) {
+            kittenAudio.playUnlock();
+            catRef.current.statusBubble = `Badge: ${wishRes.achievementBanner}`;
+            catRef.current.statusBubbleTimer = 3.5;
+          } else if (wishRes.mementoBanner) {
+            kittenAudio.playUnlock();
+            catRef.current.statusBubble = `Gift: ${wishRes.mementoBanner}!`;
+            catRef.current.statusBubbleTimer = 3.5;
+          }
+          commitSave(() => {}, true);
           return;
         }
       }
@@ -2418,6 +2667,28 @@ export const App: React.FC = () => {
         plantRef.current.vy = 0;
         return;
       }
+
+      if (
+        lanternRef.current.active &&
+        Math.abs(vx - lanternRef.current.x) <= 18 &&
+        vy >= lanternRef.current.y - 38 &&
+        vy <= lanternRef.current.y + 6
+      ) {
+        lanternDragRef.current = {
+          dragging: true,
+          moved: false,
+          offsetX: vx - lanternRef.current.x,
+          offsetY: vy - lanternRef.current.y,
+          lastX: vx,
+          lastY: vy,
+          vx: 0,
+          vy: 0,
+        };
+        lanternRef.current.grounded = false;
+        lanternRef.current.vx = 0;
+        lanternRef.current.vy = 0;
+        return;
+      }
     }
   };
 
@@ -2508,6 +2779,26 @@ export const App: React.FC = () => {
       plantRef.current.y = vy - plantDragRef.current.offsetY;
       plantRef.current.vy = 0;
       plantRef.current.grounded = false;
+      return;
+    }
+
+    if (lanternDragRef.current.dragging) {
+      const nextX = vx - lanternDragRef.current.offsetX;
+      const nextY = vy - lanternDragRef.current.offsetY;
+      if (
+        !lanternDragRef.current.moved &&
+        Math.hypot(nextX - lanternRef.current.x, nextY - lanternRef.current.y) > 4
+      ) {
+        lanternDragRef.current.moved = true;
+      }
+      lanternDragRef.current.vx = Math.max(-900, Math.min(900, (vx - lanternDragRef.current.lastX) * 45));
+      lanternDragRef.current.vy = Math.max(-900, Math.min(900, (vy - lanternDragRef.current.lastY) * 45));
+      lanternDragRef.current.lastX = vx;
+      lanternDragRef.current.lastY = vy;
+      lanternRef.current.x = nextX;
+      lanternRef.current.y = nextY;
+      lanternRef.current.vy = 0;
+      lanternRef.current.grounded = false;
       return;
     }
 
@@ -2615,6 +2906,23 @@ export const App: React.FC = () => {
       return;
     }
 
+    if (e.button === 0 && lanternDragRef.current.dragging) {
+      const wasMoved = lanternDragRef.current.moved;
+      lanternDragRef.current.dragging = false;
+      if (!wasMoved) {
+        lanternRef.current.lit = !lanternRef.current.lit;
+        lanternRef.current.vx = 0;
+        lanternRef.current.vy = 0;
+        kittenAudio.playLanternClick(lanternRef.current.lit);
+        catRef.current.statusBubble = lanternRef.current.lit ? 'Lantern lit! 🏮' : 'Lantern dimmed 🌙';
+        catRef.current.statusBubbleTimer = 1.6;
+      } else {
+        lanternRef.current.vx = lanternDragRef.current.vx * 0.6;
+        lanternRef.current.vy = lanternDragRef.current.vy * 0.6;
+      }
+      return;
+    }
+
     if (e.button === 0 && giftBoxDragRef.current.dragging) {
       giftBoxDragRef.current.dragging = false;
       giftBoxRef.current.vx = giftBoxDragRef.current.vx * 0.6;
@@ -2717,6 +3025,16 @@ export const App: React.FC = () => {
           ) {
             e.preventDefault();
             toggleGiftBox();
+            return;
+          }
+          if (
+            lanternRef.current.active &&
+            Math.abs(vx - lanternRef.current.x) <= 18 &&
+            vy >= lanternRef.current.y - 38 &&
+            vy <= lanternRef.current.y + 6
+          ) {
+            e.preventDefault();
+            toggleLantern();
             return;
           }
           if (

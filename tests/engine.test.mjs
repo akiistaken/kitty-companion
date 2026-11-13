@@ -1022,3 +1022,57 @@ test('Purple Gift Box physics, box ambush progression, and Quick Wheel bounds', 
   }
   assert.equal(buttons.find((b) => b.id === 'laser')?.active, true);
 });
+
+test('Moonlight Lantern physics, shooting star wishes, and Star Jar wish unlocks', () => {
+  const save = progression.createInitialSaveState('lavender', 'Luna', true);
+  const snap = physics.createBrowserFallbackSnapshot();
+  const ledges = physics.buildWalkableLedges(snap);
+  const cat = makeCat(300, 620);
+  const particles = [];
+
+  const lantern = {
+    active: true,
+    lit: true,
+    x: 320,
+    y: 400,
+    vx: 0,
+    vy: 0,
+    grounded: false,
+  };
+  for (let i = 0; i < 90; i++) {
+    physics.stepLanternPhysics(lantern, ledges, snap.monitors, 1 / 60, false);
+  }
+  assert.equal(lantern.grounded, true);
+  assert.equal(lantern.lit, true);
+
+  const star = ai.spawnShootingStar(snap.monitors);
+  assert.ok(star);
+  const stars = [star];
+  const prevX = star.x;
+  physics.stepShootingStars(stars, 0.25);
+  assert.notEqual(star.x, prevX);
+
+  // First shooting star wish unlocks Moonstone Charm memento
+  ai.wishOnShootingStar(star, cat, save, particles);
+  assert.equal(star.wished, true);
+  assert.equal(save.stats.wishesMade, 1);
+  assert.ok(save.mementos.includes('moon_stone'));
+  physics.stepShootingStars(stars, 0.016);
+  assert.equal(stars.length, 0);
+
+  // Spending from Star Jar requires 5 stars
+  save.starJarCount = 3;
+  assert.equal(progression.spendStarJarForWish(save).ok, false);
+
+  save.starJarCount = 10;
+  assert.equal(progression.spendStarJarForWish(save).ok, true);
+  assert.equal(save.starJarCount, 5);
+  assert.equal(save.stats.wishesMade, 2);
+
+  // Third wish unlocks Stargazer achievement & Crescent Halo accessory
+  assert.equal(progression.spendStarJarForWish(save).ok, true);
+  assert.equal(save.starJarCount, 0);
+  assert.equal(save.stats.wishesMade, 3);
+  assert.ok(save.achievements.stargazer);
+  assert.ok(save.unlockedAccessories.includes('crescent_crown'));
+});
