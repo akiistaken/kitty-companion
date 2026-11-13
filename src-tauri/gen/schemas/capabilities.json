@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capability for the Kitten overlay, HUD, and splash windows","local":true,"windows":["overlay","hud","splash"],"permissions":["core:default","core:window:default","core:window:allow-start-dragging","core:window:allow-show","core:window:allow-hide","core:window:allow-set-focus","core:event:default"]}}

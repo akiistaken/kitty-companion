@@ -1,0 +1,18 @@
+# Dependencies & build output
+node_modules/
+dist/
+src-tauri/target/
+
+# Impeccable runtime & local state (keep PRODUCT.md, DESIGN.md, .impeccable/config.json, surfaces/, design.json)
+**/.impeccable/config.local.json
+**/.impeccable/hook.cache.json
+**/.impeccable/hook.pending.json
+**/.impeccable/*.png
+**/.impeccable/review/
+**/.impeccable/questions/
+**/.impeccable/live/server.json
+**/.impeccable/live/sessions/
+**/.impeccable/live/previews/
+**/.impeccable/live/annotations/
+**/.impeccable/live/cache/
+**/.impeccable/live/*.png
