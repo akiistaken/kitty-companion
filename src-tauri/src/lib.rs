@@ -400,7 +400,6 @@ pub fn run() {
             let toss_yarn = MenuItem::with_id(app, "toss_yarn", "Toss Yarn Ball", true, None::<&str>)?;
             let toggle_tease_yarn = MenuItem::with_id(app, "toggle_tease_yarn", "Hold / Drop Yarn (Tease)", true, None::<&str>)?;
             let clear_yarn = MenuItem::with_id(app, "clear_yarn", "Clear / Hide Yarn", true, None::<&str>)?;
-            let toggle_feather_wand = MenuItem::with_id(app, "toggle_feather_wand", "Spawn Feather Wand", true, None::<&str>)?;
             let toggle_cushion = MenuItem::with_id(app, "toggle_cushion", "Place / Remove Cushion", true, None::<&str>)?;
             let toggle_lantern = MenuItem::with_id(app, "toggle_lantern", "Place / Remove Lantern", true, None::<&str>)?;
             let summon_star = MenuItem::with_id(app, "summon_star", "Summon Shooting Star", true, None::<&str>)?;
@@ -418,7 +417,6 @@ pub fn run() {
                     &toss_yarn,
                     &toggle_tease_yarn,
                     &clear_yarn,
-                    &toggle_feather_wand,
                     &toggle_cushion,
                     &toggle_lantern,
                     &summon_star,
@@ -459,9 +457,6 @@ pub fn run() {
                     }
                     "clear_yarn" => {
                         let _ = app.emit("kitten://tray-action", "clear_yarn");
-                    }
-                    "toggle_feather_wand" => {
-                        let _ = app.emit("kitten://tray-action", "toggle_feather_wand");
                     }
                     "toggle_cushion" => {
                         let _ = app.emit("kitten://tray-action", "toggle_cushion");

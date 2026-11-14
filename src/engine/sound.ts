@@ -64,9 +64,13 @@ const STAGE_VOICES: Record<LifeStage, StageVoiceProfile> = {
   },
 };
 
+export type MutedVocalKind = 'mew' | 'purr' | 'trill' | 'yawn' | 'poke';
+
 class ChiptuneAudio {
   private ctx: AudioContext | null = null;
   private lastPlayedAt = new Map<string, number>();
+  private idleSuspendTimer: ReturnType<typeof setTimeout> | null = null;
+  private mutedCues: MutedVocalKind[] = [];
   private _enabled = true;
   public volume = 0.25;
   public stage: LifeStage = 'tiny_kitten';
@@ -79,6 +83,10 @@ class ChiptuneAudio {
   set enabled(value: boolean) {
     this._enabled = value;
     if (!value && this.ctx && this.ctx.state === 'running') {
+      if (this.idleSuspendTimer) {
+        clearTimeout(this.idleSuspendTimer);
+        this.idleSuspendTimer = null;
+      }
       void this.ctx.suspend().catch(() => {});
     }
   }
@@ -87,12 +95,51 @@ class ChiptuneAudio {
     this.stage = stage;
   }
 
+  public resetCooldowns() {
+    this.lastPlayedAt.clear();
+  }
+
+  private isAudible(): boolean {
+    return this._enabled && this.volume > 0.01;
+  }
+
+  private emitMutedCue(kind: MutedVocalKind) {
+    if (this.isAudible()) return;
+    if (this.mutedCues.length < 8) {
+      this.mutedCues.push(kind);
+    }
+  }
+
+  public consumeMutedVocalCues(): MutedVocalKind[] {
+    if (this.mutedCues.length === 0) return [];
+    const out = this.mutedCues;
+    this.mutedCues = [];
+    return out;
+  }
+
+  public isContextSuspended(): boolean {
+    return !this.ctx || this.ctx.state === 'suspended';
+  }
+
+  private scheduleAutoSuspend() {
+    if (typeof setTimeout === 'undefined') return;
+    if (this.idleSuspendTimer) {
+      clearTimeout(this.idleSuspendTimer);
+    }
+    this.idleSuspendTimer = setTimeout(() => {
+      this.idleSuspendTimer = null;
+      if (this.ctx && this.ctx.state === 'running') {
+        void this.ctx.suspend().catch(() => {});
+      }
+    }, 10_000);
+  }
+
   private voice(): StageVoiceProfile {
     return STAGE_VOICES[this.stage] ?? STAGE_VOICES.tiny_kitten;
   }
 
   private ensureContext(): AudioContext | null {
-    if (!this.enabled || this.volume <= 0.01) return null;
+    if (!this.isAudible()) return null;
     if (!this.ctx && typeof window !== 'undefined') {
       const AudioCtx =
         window.AudioContext ||
@@ -103,6 +150,9 @@ class ChiptuneAudio {
     }
     if (this.ctx && this.ctx.state === 'suspended') {
       void this.ctx.resume().catch(() => {});
+    }
+    if (this.ctx) {
+      this.scheduleAutoSuspend();
     }
     return this.ctx;
   }
@@ -154,6 +204,10 @@ class ChiptuneAudio {
   playPurr(intensity: 'soft' | 'happy' = 'happy') {
     const cooldown = intensity === 'soft' ? 6800 : 850;
     if (!this.canPlay(`purr:${intensity}`, cooldown)) return;
+    if (!this.isAudible()) {
+      this.emitMutedCue('purr');
+      return;
+    }
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -212,21 +266,37 @@ class ChiptuneAudio {
    */
   playMew(highPitch?: boolean, variant?: number) {
     if (!this.canPlay('mew', 350)) return;
+    if (!this.isAudible()) {
+      this.emitMutedCue('mew');
+      return;
+    }
     const v = this.voice();
-    const pick = variant ?? Math.floor(Math.random() * 3);
-    const base = highPitch ? Math.max(v.mewBase, 840) : v.mewBase;
+    const pick = variant ?? Math.floor(Math.random() * 5);
+    const jitter = 0.94 + Math.random() * 0.12;
+    const base = (highPitch ? Math.max(v.mewBase, 840) : v.mewBase) * jitter;
     const spd = v.mewSpeed;
     const wave: OscillatorType = this.style === 'music_box' ? 'sine' : 'triangle';
 
     if (pick === 0) {
+      // Classic gentle rising-falling meow
       this.tone(base, base * 1.32, 0.11 * spd, wave, 0.17, 0);
       this.tone(base * 1.28, base * 0.88, 0.13 * spd, wave, 0.13, 0.09 * spd);
     } else if (pick === 1) {
+      // Bright chirpy mew
       this.tone(base * 1.1, base * 1.52, 0.09 * spd, wave, 0.16, 0);
       this.tone(base * 1.48, base * 1.18, 0.07 * spd, 'sine', 0.11, 0.07 * spd);
-    } else {
+    } else if (pick === 2) {
+      // Curious questioning "mrrp?"
       this.tone(base * 0.95, base * 1.25, 0.07 * spd, wave, 0.14, 0);
-      this.tone(base * 1.08, base * 1.38, 0.12 * spd, wave, 0.16, 0.09 * spd);
+      this.tone(base * 1.08, base * 1.42, 0.12 * spd, wave, 0.16, 0.09 * spd);
+    } else if (pick === 3) {
+      // Soft sleepy mew
+      this.tone(base * 0.92, base * 1.12, 0.1 * spd, 'sine', 0.13, 0);
+      this.tone(base * 1.1, base * 0.82, 0.14 * spd, 'sine', 0.1, 0.08 * spd);
+    } else {
+      // Happy playful double-mew
+      this.tone(base * 1.05, base * 1.35, 0.07 * spd, wave, 0.15, 0);
+      this.tone(base * 1.14, base * 1.48, 0.11 * spd, wave, 0.16, 0.11 * spd);
     }
   }
 
@@ -235,6 +305,10 @@ class ChiptuneAudio {
    */
   playTrill(highPitch?: boolean) {
     if (!this.canPlay('trill', 900)) return;
+    if (!this.isAudible()) {
+      this.emitMutedCue('trill');
+      return;
+    }
     const v = this.voice();
     const base = highPitch ? Math.max(v.trillBase, 680) : v.trillBase;
     const wave: OscillatorType = this.style === 'music_box' ? 'sine' : 'triangle';
@@ -248,6 +322,10 @@ class ChiptuneAudio {
    */
   playPoke(streak = 1) {
     if (!this.canPlay('poke', 180)) return;
+    if (!this.isAudible()) {
+      this.emitMutedCue('poke');
+      return;
+    }
     const v = this.voice();
     const pitchBoost = Math.min(1.24, 1 + (streak - 1) * 0.06);
     const f = v.pokeFreq * pitchBoost;
@@ -305,6 +383,10 @@ class ChiptuneAudio {
 
   playYawn() {
     if (!this.canPlay('yawn', 9000)) return;
+    if (!this.isAudible()) {
+      this.emitMutedCue('yawn');
+      return;
+    }
     const v = this.voice();
     this.tone(v.yawnStart, v.yawnStart * 1.16, 0.12, 'sine', 0.075, 0);
     this.tone(v.yawnStart * 1.15, v.yawnStart * 0.52, 0.34, 'sine', 0.08, 0.11);

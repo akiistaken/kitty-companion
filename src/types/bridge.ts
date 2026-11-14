@@ -4,7 +4,6 @@ export interface HudSyncPayload {
   save: KittenSaveState;
   focus: FocusState;
   teaseYarnActive?: boolean;
-  featherWandActive?: boolean;
   cushionActive?: boolean;
   laserActive?: boolean;
   plantActive?: boolean;
@@ -20,7 +19,6 @@ export type HudAction =
   | { type: 'tossToy'; kind: ToyKind }
   | { type: 'pokeKitten' }
   | { type: 'toggleTeaseYarn' }
-  | { type: 'toggleFeatherWand' }
   | { type: 'toggleCushion' }
   | { type: 'toggleLaser' }
   | { type: 'togglePlant' }
@@ -31,6 +29,8 @@ export type HudAction =
   | { type: 'makeJarWish' }
   | { type: 'spawnBubbles' }
   | { type: 'doTrick' }
+  | { type: 'doStretch' }
+  | { type: 'doRoll' }
   | { type: 'clearYarn' }
   | { type: 'toggleFocus' }
   | { type: 'snapMemory' }

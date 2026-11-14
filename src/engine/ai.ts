@@ -4,7 +4,6 @@ import {
   CatRuntime,
   CushionEntity,
   DesktopSnapshot,
-  FeatherWandState,
   FocusState,
   GiftBoxEntity,
   KittenSaveState,
@@ -25,9 +24,16 @@ import {
   getGroundYAt,
   GRAVITY,
 } from './physics';
-import { applyXpAndEvaluate, formatAppLabel, pushTimelineEntry } from './progression';
+import {
+  applyXpAndEvaluate,
+  formatAppLabel,
+  pushTimelineEntry,
+  recordDailyStamp,
+} from './progression';
 import { kittenAudio } from './sound';
 import { getStageDimensions } from './sprites';
+
+export { kittenAudio };
 
 export interface StepResult {
   holdCursorTarget: { active: boolean; x: number; y: number } | null;
@@ -118,9 +124,12 @@ export function triggerGreeting(
   cat.stateTimer = 1.6;
   cat.blushTimer = 3.2;
   cat.vx = 0;
-  cat.statusBubble = `Hi ${name}! ♥`;
+  cat.statusBubble = `Meow ${name}!`;
   cat.statusBubbleTimer = 4.2;
 
+  kittenAudio.enabled = save.settings.soundEnabled;
+  kittenAudio.volume = save.settings.volume;
+  kittenAudio.style = save.settings.soundStyle ?? 'chiptune';
   kittenAudio.setStage(save.stage);
   kittenAudio.playMew();
 
@@ -168,11 +177,12 @@ export function triggerPokeCat(
     cat.grounded = false;
   }
 
+  kittenAudio.enabled = save.settings.soundEnabled;
+  kittenAudio.volume = save.settings.volume;
+  kittenAudio.style = save.settings.soundStyle ?? 'chiptune';
   kittenAudio.setStage(save.stage);
   kittenAudio.playPoke(cat.pokeStreak);
-  if (cat.pokeStreak === 1) {
-    kittenAudio.playMew();
-  }
+  kittenAudio.playMew(cat.pokeStreak >= 2);
 
   addParticle(particles, {
     kind: 'boop',
@@ -268,7 +278,6 @@ export function stepCatAI(params: {
   butterflies?: ButterflyEntity[];
   bubbles?: BubbleEntity[];
   cushion?: CushionEntity;
-  featherWand?: FeatherWandState;
   plant?: LavenderPlantEntity;
   giftBox?: GiftBoxEntity;
   lantern?: LanternEntity;
@@ -289,7 +298,6 @@ export function stepCatAI(params: {
     butterflies = [],
     bubbles = [],
     cushion,
-    featherWand,
     plant,
     giftBox,
     lantern,
@@ -312,10 +320,43 @@ export function stepCatAI(params: {
   cat.yarnCatchCooldown = Math.max(0, cat.yarnCatchCooldown - dt);
   cat.blushTimer = Math.max(0, cat.blushTimer - dt);
   cat.meowCooldown = Math.max(0, cat.meowCooldown - dt);
+  cat.slowBlinkTimer = Math.max(0, (cat.slowBlinkTimer ?? 0) - dt);
 
   if (cat.statusBubbleTimer > 0) {
     cat.statusBubbleTimer = Math.max(0, cat.statusBubbleTimer - dt);
     if (cat.statusBubbleTimer === 0) cat.statusBubble = null;
+  }
+
+  // Affectionate slow-blink when user lingers gently near an idle kitten
+  const cursorDistToCat = Math.hypot(
+    snapshot.cursorX - (cat.x + dims.width / 2),
+    snapshot.cursorY - (cat.y + dims.height / 2),
+  );
+  if (
+    cat.grounded &&
+    !focus.active &&
+    !isDraggingCat &&
+    (cat.state === 'sit' || cat.state === 'loaf' || cat.state === 'idle') &&
+    cursorDistToCat <= 110
+  ) {
+    cat.idleHoverTime = (cat.idleHoverTime ?? 0) + dt;
+    if ((cat.idleHoverTime ?? 0) >= 1.1 && (cat.slowBlinkTimer ?? 0) <= 0) {
+      cat.slowBlinkTimer = 0.72;
+      cat.blushTimer = Math.max(cat.blushTimer, 1.4);
+      cat.idleHoverTime = -3.4;
+      kittenAudio.playPurr('soft');
+      recordDailyStamp(save, 'slow_blink');
+      addParticle(particles, {
+        kind: 'heart',
+        x: cat.x + dims.width / 2,
+        y: cat.y - 6,
+        vx: 0,
+        vy: -20,
+        maxLife: 1.0,
+      });
+    }
+  } else if ((cat.idleHoverTime ?? 0) > 0) {
+    cat.idleHoverTime = 0;
   }
 
   // Passive treat decay (very gentle, never punishes)
@@ -456,50 +497,6 @@ export function stepCatAI(params: {
       cat.vx = cat.facing * 245;
       cat.stateTimer = 0.25;
     }
-  } else if (canPursueInteractive && featherWand?.active && !(targetToy?.kind === 'yarn' && targetToy.heldBy)) {
-    const catCenterX = cat.x + dims.width / 2;
-    const catBottomY = cat.y + dims.height;
-    const dx = featherWand.x - catCenterX;
-    const dy = featherWand.y - catBottomY;
-    if (featherWand.heldByCursor) {
-      if (Math.abs(dx) <= 84 && dy < 28 && dy > -280) {
-        if (cat.state !== 'reach_yarn') {
-          cat.state = 'reach_yarn';
-          cat.yarnReachHopCooldown = Math.max(cat.yarnReachHopCooldown, 0.4);
-          kittenAudio.playBellJingle();
-        }
-        cat.stateTimer = 0.35;
-        cat.vx = 0;
-        cat.facing = dx >= 0 ? 1 : -1;
-      } else if (cat.perchedHwnd != null && dy > 36 && Math.abs(dx) < 420 && cat.grounded) {
-        jumpDownFromPerch(cat, save, catCenterX, catBottomY, featherWand.x, featherWand.y);
-      } else if (cat.grounded && Math.abs(dx) > 40) {
-        cat.state = 'run';
-        cat.facing = dx >= 0 ? 1 : -1;
-        cat.vx = cat.facing * 245;
-        cat.stateTimer = 0.25;
-      }
-    } else if (Math.abs(dx) < 38 && Math.abs(dy) < 42 && cat.yarnCatchCooldown <= 0) {
-      // Dropped feather wand sitting on desktop: playful pounce/bat with bell jingle!
-      cat.facing = dx >= 0 ? 1 : -1;
-      featherWand.vx = cat.facing * (180 + Math.random() * 60);
-      featherWand.vy = -220;
-      featherWand.grounded = false;
-      cat.yarnCatchCooldown = 2.2;
-      cat.blushTimer = 1.6;
-      save.stats.yarnBats += 1;
-      save.bond = Math.min(100, save.bond + 2);
-      kittenAudio.playBellJingle();
-      kittenAudio.playMew();
-      addParticle(particles, { kind: 'sparkle', x: featherWand.x, y: featherWand.y, vx: 0, vy: -24, maxLife: 0.8 });
-    } else if (cat.perchedHwnd != null && dy > 36 && Math.abs(dx) < 420 && cat.grounded) {
-      jumpDownFromPerch(cat, save, catCenterX, catBottomY, featherWand.x, featherWand.y);
-    } else if (cat.grounded && Math.abs(dx) > 26 && Math.abs(dy) < 200 && cat.yarnCatchCooldown <= 0) {
-      cat.state = 'run';
-      cat.facing = dx >= 0 ? 1 : -1;
-      cat.vx = cat.facing * 205;
-      cat.stateTimer = 0.25;
-    }
   } else if (
     !focus.active &&
     cat.state !== 'eat' &&
@@ -511,7 +508,7 @@ export function stepCatAI(params: {
     !targetToy &&
     butterflies.length > 0
   ) {
-    // Chase / boop nearest unbooped pastel butterfly or night firefly (including mid-jump catches!)
+    // Chase / boop nearest unbooped pastel butterfly or night firefly (randomly ignore if actively sleeping!)
     const catCenterX = cat.x + dims.width / 2;
     const catCenterY = cat.y + dims.height / 2;
     const catBottomY = cat.y + dims.height;
@@ -519,6 +516,23 @@ export function stepCatAI(params: {
     let nearestDist = Infinity;
     for (const b of butterflies) {
       if (b.booped) continue;
+      if (cat.state === 'sleep') {
+        if (b.ignored === undefined) {
+          b.ignored = Math.random() < 0.72;
+          if (b.ignored) {
+            recordDailyStamp(save, 'sleep_firefly');
+            addParticle(particles, {
+              kind: 'zzz',
+              x: catCenterX + cat.facing * 8,
+              y: cat.y - 6,
+              vx: 6,
+              vy: -14,
+              maxLife: 1.3,
+            });
+          }
+        }
+        if (b.ignored) continue;
+      }
       const d = Math.hypot(b.x - catCenterX, b.y - catCenterY);
       if (d < 460 && d < nearestDist) {
         nearestDist = d;
@@ -589,8 +603,7 @@ export function stepCatAI(params: {
   if (
     canPursueInteractive &&
     !laserActive &&
-    targetToy &&
-    (!featherWand?.active || (targetToy.kind === 'yarn' && targetToy.heldBy))
+    targetToy
   ) {
     const catCenterX = cat.x + dims.width / 2;
     const catBottomY = cat.y + dims.height;
@@ -751,6 +764,7 @@ export function stepCatAI(params: {
       cat.yarnCatchCooldown = 0.65;
       cat.statusBubble = 'Pop! 🫧';
       cat.statusBubbleTimer = 1.1;
+      kittenAudio.playMew();
     } else if (
       dy < -36 &&
       dy > -240 &&
@@ -1106,19 +1120,14 @@ export function stepCatAI(params: {
 
     case 'reach_yarn': {
       const heldYarn = targetToy && targetToy.kind === 'yarn' && targetToy.heldBy ? targetToy : null;
-      const reachTarget = heldYarn
-        ? { x: heldYarn.x, y: heldYarn.y, radius: heldYarn.radius, isWand: false }
-        : featherWand?.active && featherWand.heldByCursor
-          ? { x: featherWand.x, y: featherWand.y, radius: 10, isWand: true }
-          : null;
-      if (!reachTarget) {
+      if (!heldYarn) {
         cat.state = 'idle';
         cat.stateTimer = 0.9;
         break;
       }
 
-      const dx = reachTarget.x - catCenterX;
-      const dy = reachTarget.y + reachTarget.radius - (cat.y + dims.height);
+      const dx = heldYarn.x - catCenterX;
+      const dy = heldYarn.y + heldYarn.radius - (cat.y + dims.height);
       cat.facing = dx >= 0 ? 1 : -1;
 
       if (Math.abs(dx) > 14 && Math.abs(dx) <= 95) {
@@ -1128,24 +1137,19 @@ export function stepCatAI(params: {
 
       const pawX = cat.x + dims.width / 2 + cat.facing * (dims.width * 0.28);
       const pawY = cat.y + dims.height * 0.16;
-      if (cat.yarnCatchCooldown <= 0 && Math.hypot(reachTarget.x - pawX, reachTarget.y - pawY) < 42) {
+      if (cat.yarnCatchCooldown <= 0 && Math.hypot(heldYarn.x - pawX, heldYarn.y - pawY) < 42) {
         save.stats.yarnCatches += 1;
         save.stats.yarnBats += 1;
         save.bond = Math.min(100, save.bond + 5);
         cat.blushTimer = 2.6;
         cat.yarnCatchCooldown = 1.0;
-        if (reachTarget.isWand) {
-          kittenAudio.playBellJingle();
-          if (featherWand) featherWand.idleSeconds = 0;
-        } else {
-          kittenAudio.playCatch();
-        }
+        kittenAudio.playCatch();
         kittenAudio.playMew();
         addParticle(particles, { kind: 'sparkle', x: pawX, y: pawY, vx: 0, vy: -26, maxLife: 0.85 });
         addParticle(particles, { kind: 'heart', x: catCenterX, y: cat.y - 6, vx: 0, vy: -28, maxLife: 1.0 });
-        addParticle(particles, { kind: 'petal', x: pawX + 8, y: pawY, vx: 22, vy: -18, maxLife: 0.95, color: reachTarget.isWand ? '#c8a6f7' : '#ff85b3' });
+        addParticle(particles, { kind: 'petal', x: pawX + 8, y: pawY, vx: 22, vy: -18, maxLife: 0.95, color: '#ff85b3' });
 
-        if (heldYarn?.heldBy === 'drag') {
+        if (heldYarn.heldBy === 'drag') {
           heldYarn.heldBy = null;
           heldYarn.vx = cat.facing * 220;
           heldYarn.vy = -250;
@@ -1153,7 +1157,7 @@ export function stepCatAI(params: {
         }
         cat.state = 'celebrate';
         cat.stateTimer = 0.85;
-        cat.statusBubble = reachTarget.isWand ? 'Got feather! ♥' : 'Got it! ♥';
+        cat.statusBubble = 'Got it! ♥';
         cat.statusBubbleTimer = 1.3;
 
         const ev = applyXpAndEvaluate(save, 14);
@@ -1245,10 +1249,10 @@ export function stepCatAI(params: {
         });
       }
       if (cat.stateTimer <= 0 && !focus.active) {
-        if (cat.state === 'sleep' && Math.random() < 0.5) {
-          cat.state = 'stretch';
-          cat.stateTimer = 1.5;
-          cat.vx = 0;
+        const hour = new Date().getHours();
+        const isMorning = hour >= 5 && hour < 11;
+        if (cat.state === 'sleep' && Math.random() < (isMorning ? 0.75 : 0.55)) {
+          enterStretchState(cat, save, isMorning);
         } else {
           chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
         }
@@ -1257,6 +1261,19 @@ export function stepCatAI(params: {
     }
 
     case 'stretch': {
+      kittenAudio.playPurr('soft');
+      if (cat.particleCooldown <= 0) {
+        cat.particleCooldown = 1.1;
+        addParticle(particles, {
+          kind: 'sparkle',
+          x: catCenterX + cat.facing * 8,
+          y: cat.y + 4,
+          vx: cat.facing * 8,
+          vy: -16,
+          maxLife: 0.75,
+          color: '#f3d9ff',
+        });
+      }
       if (cat.stateTimer <= 0) {
         chooseNextGroundedState(cat, save, snapshot, ledges, lateNight, isBusyUser, focus, musicPlaying, cushion, plant, giftBox, lantern);
       }
@@ -1419,8 +1436,11 @@ export function stepCatAI(params: {
       kittenAudio.playPurr('happy');
       if (cat.particleCooldown <= 0) {
         cat.particleCooldown = 0.4;
+        const nearWarmth =
+          (cushion?.active && Math.abs(cushion.x - catCenterX) < 56) ||
+          (lantern?.active && lantern.lit && Math.abs(lantern.x - catCenterX) < 68);
         addParticle(particles, {
-          kind: Math.random() < 0.5 ? 'heart' : 'sparkle',
+          kind: Math.random() < 0.5 ? 'heart' : nearWarmth ? 'petal' : 'sparkle',
           x: catCenterX + (Math.random() * 18 - 9),
           y: cat.y - 2,
           vx: (Math.random() - 0.5) * 16,
@@ -1476,6 +1496,7 @@ export function stepCatAI(params: {
         cat.stateTimer = 1.0;
         cat.statusBubble = 'Wheee!! 💜';
         cat.statusBubbleTimer = 1.3;
+        kittenAudio.playMew(true);
       }
       break;
     }
@@ -1512,6 +1533,7 @@ export function stepCatAI(params: {
 
     case 'peek': {
       cat.facing = snapshot.cursorX >= catCenterX ? 1 : -1;
+      recordDailyStamp(save, 'window_peek');
       if (cat.stateTimer <= 0) {
         cat.state = 'sit';
         cat.stateTimer = 1.2;
@@ -1532,7 +1554,66 @@ export function stepCatAI(params: {
     }
   }
 
+  // Visual ♪ cue when audio is muted so vocalizations remain expressive cleanly
+  const mutedCues = kittenAudio.consumeMutedVocalCues();
+  for (const cue of mutedCues) {
+    addParticle(particles, {
+      kind: 'note',
+      x: cat.x + dims.width / 2 + (Math.random() * 16 - 8),
+      y: cat.y - 8,
+      vx: (Math.random() - 0.5) * 14,
+      vy: -24,
+      maxLife: 1.05,
+      glyph: cue === 'purr' ? '～♪' : '♪',
+      color: cue === 'poke' ? '#ff85b3' : '#d8b4ff',
+    });
+  }
+
   return result;
+}
+
+function enterStretchState(
+  cat: CatRuntime,
+  save: KittenSaveState,
+  isMorning = false,
+  withBubble = false,
+) {
+  cat.state = 'stretch';
+  cat.vx = 0;
+  cat.stateTimer = 1.65;
+  cat.particleCooldown = 0.25;
+  recordDailyStamp(save, 'first_stretch');
+  if (isMorning || Math.random() < 0.45) {
+    kittenAudio.playYawn();
+    if (isMorning) recordDailyStamp(save, 'morning_yawn');
+  } else {
+    kittenAudio.playPurr('soft');
+  }
+  if (withBubble) {
+    cat.statusBubble = 'Biiig stretch~ ✨';
+    cat.statusBubbleTimer = 1.5;
+  }
+}
+
+function enterRollWiggleState(
+  cat: CatRuntime,
+  save: KittenSaveState,
+  withBubble = false,
+) {
+  cat.state = 'roll_wiggle';
+  cat.vx = 0;
+  cat.stateTimer = 1.85;
+  cat.blushTimer = Math.max(cat.blushTimer, 1.8);
+  recordDailyStamp(save, 'belly_roll');
+  kittenAudio.playPurr('happy');
+  if (cat.meowCooldown <= 0) {
+    cat.meowCooldown = 1.8;
+    kittenAudio.playMew();
+  }
+  if (withBubble) {
+    cat.statusBubble = 'Wiggle roll! 🐾';
+    cat.statusBubbleTimer = 1.5;
+  }
 }
 
 function triggerPlantSniff(
@@ -1549,6 +1630,7 @@ function triggerPlantSniff(
   cat.statusBubble = 'Lavender bliss! 🪻';
   cat.statusBubbleTimer = 2.0;
   kittenAudio.playPurr('happy');
+  kittenAudio.playMew();
   for (let i = 0; i < 4; i++) {
     addParticle(particles, {
       kind: 'petal',
@@ -1617,13 +1699,16 @@ function chooseNextGroundedState(
   const catCenterX = cat.x + dims.width / 2;
   const catBottomY = cat.y + dims.height;
 
-  // Busy user -> quiet Study Buddy loaf!
+  // Busy user -> quiet Study Buddy loaf with gentle purrs & mews (no repetitive text bubble)!
   if (save.settings.studyBuddyEnabled && isBusyUser) {
     cat.state = Math.random() < 0.7 ? 'loaf' : 'sit';
     cat.vx = 0;
     cat.stateTimer = 5 + Math.random() * 4;
-    cat.statusBubble = 'Study buddy';
-    cat.statusBubbleTimer = 2.5;
+    kittenAudio.playPurr('soft');
+    if (cat.meowCooldown <= 0 && Math.random() < 0.35) {
+      cat.meowCooldown = 8 + Math.random() * 6;
+      kittenAudio.playMew();
+    }
     return;
   }
 
@@ -1647,6 +1732,7 @@ function chooseNextGroundedState(
         cat.statusBubble = 'Making biscuits ♥';
         cat.statusBubbleTimer = 2.4;
         kittenAudio.playPurr('happy');
+        kittenAudio.playMew();
       }
       return;
     } else if (Math.abs(dxCushion) < 360 && Math.random() < 0.45) {
@@ -1683,6 +1769,7 @@ function chooseNextGroundedState(
       save.stats.lanternNaps = (save.stats.lanternNaps ?? 0) + 1;
       applyXpAndEvaluate(save, 6);
       kittenAudio.playPurr('soft');
+      kittenAudio.playMew();
       return;
     } else if (Math.abs(dxLantern) >= 56 && Math.abs(dxLantern) < 380 && Math.random() < (lateNight ? 0.5 : 0.32)) {
       cat.state = 'walk';
@@ -1817,27 +1904,37 @@ function chooseNextGroundedState(
     kittenAudio.playMew();
   }
 
+  const hour = new Date().getHours();
+  const isMorning = hour >= 5 && hour < 11;
+  const nearCozySpot =
+    (cushion?.active && Math.abs(cushion.x - catCenterX) < 56) ||
+    (lantern?.active && lantern.lit && Math.abs(lantern.x - catCenterX) < 68);
+
   const roll = Math.random();
-  if (roll < 0.4) {
+  if (roll < 0.34) {
     cat.state = 'walk';
     cat.facing = Math.random() < 0.5 ? 1 : -1;
     const speed = save.stage === 'tiny_kitten' ? 68 : save.stage === 'junior_kitten' ? 92 : 108;
     cat.vx = cat.facing * speed;
     cat.stateTimer = 2.2 + Math.random() * 3.0;
-  } else if (roll < 0.56) {
+  } else if (roll < 0.46) {
     cat.state = 'run';
     cat.facing = Math.random() < 0.5 ? 1 : -1;
     cat.vx = cat.facing * 190;
     cat.stateTimer = 1.4 + Math.random() * 1.4;
-  } else if (roll < 0.72) {
+  } else if (roll < 0.59) {
     cat.state = 'sit';
     cat.vx = 0;
     cat.stateTimer = 2.0 + Math.random() * 2.5;
-  } else if (roll < 0.82) {
+  } else if (roll < (isMorning ? 0.74 : 0.68)) {
+    enterStretchState(cat, save, isMorning);
+  } else if (roll < (nearCozySpot || save.bond >= 35 ? 0.77 : 0.73)) {
+    enterRollWiggleState(cat, save);
+  } else if (roll < 0.85) {
     cat.state = 'groom';
     cat.vx = 0;
     cat.stateTimer = 2.4 + Math.random() * 1.2;
-  } else if (roll < 0.93) {
+  } else if (roll < 0.94) {
     cat.state = 'loaf';
     cat.vx = 0;
     cat.stateTimer = 3.5 + Math.random() * 4.0;
@@ -1952,6 +2049,56 @@ export function triggerCatTrick(
   return result;
 }
 
+export function triggerCatStretch(
+  cat: CatRuntime,
+  save: KittenSaveState,
+  particles: Particle[],
+): StepResult {
+  const result: StepResult = { holdCursorTarget: null };
+  const dims = getStageDimensions(save.stage, save.settings.spriteScale);
+  const hour = new Date().getHours();
+  kittenAudio.enabled = save.settings.soundEnabled;
+  kittenAudio.volume = save.settings.volume;
+  kittenAudio.style = save.settings.soundStyle ?? 'chiptune';
+  enterStretchState(cat, save, hour >= 5 && hour < 11, true);
+  save.bond = Math.min(100, save.bond + 1);
+  addParticle(particles, {
+    kind: 'sparkle',
+    x: cat.x + dims.width / 2,
+    y: cat.y,
+    vx: 0,
+    vy: -20,
+    maxLife: 0.8,
+    color: '#f3d9ff',
+  });
+  recordProgressionFeedback(applyXpAndEvaluate(save, 6), result);
+  return result;
+}
+
+export function triggerCatRoll(
+  cat: CatRuntime,
+  save: KittenSaveState,
+  particles: Particle[],
+): StepResult {
+  const result: StepResult = { holdCursorTarget: null };
+  const dims = getStageDimensions(save.stage, save.settings.spriteScale);
+  kittenAudio.enabled = save.settings.soundEnabled;
+  kittenAudio.volume = save.settings.volume;
+  kittenAudio.style = save.settings.soundStyle ?? 'chiptune';
+  enterRollWiggleState(cat, save, true);
+  save.bond = Math.min(100, save.bond + 2);
+  addParticle(particles, {
+    kind: 'heart',
+    x: cat.x + dims.width / 2,
+    y: cat.y - 4,
+    vx: 0,
+    vy: -24,
+    maxLife: 0.9,
+  });
+  recordProgressionFeedback(applyXpAndEvaluate(save, 8), result);
+  return result;
+}
+
 export function triggerCatZoomies(
   cat: CatRuntime,
   save: KittenSaveState,
@@ -2057,6 +2204,7 @@ export function brushCat(
     cat.stateTimer = Math.max(cat.stateTimer, 1.5);
     cat.statusBubble = 'Hehe ticklish! >w<';
     cat.statusBubbleTimer = 1.4;
+    recordDailyStamp(save, 'belly_roll');
   } else {
     cat.state = 'petted';
     cat.stateTimer = Math.max(cat.stateTimer, 1.3);
@@ -2067,8 +2215,13 @@ export function brushCat(
   save.bond = Math.min(100, save.bond + 0.4);
   kittenAudio.enabled = save.settings.soundEnabled;
   kittenAudio.volume = save.settings.volume;
+  kittenAudio.style = save.settings.soundStyle ?? 'chiptune';
   kittenAudio.playBrushStroke();
   kittenAudio.playPurr('happy');
+  if (cat.meowCooldown <= 0) {
+    cat.meowCooldown = 1.6;
+    kittenAudio.playMew();
+  }
 
   if (Math.random() < 0.7) {
     addParticle(particles, {
@@ -2131,7 +2284,11 @@ export function wishOnShootingStar(
   cat.blushTimer = 2.8;
   cat.statusBubble = 'Make a wish! 🌠';
   cat.statusBubbleTimer = 2.6;
+  kittenAudio.enabled = save.settings.soundEnabled;
+  kittenAudio.volume = save.settings.volume;
+  kittenAudio.style = save.settings.soundStyle ?? 'chiptune';
   kittenAudio.playWishChime();
+  kittenAudio.playMew(true);
 
   const colors = ['#fef08a', '#d8b4fe', '#c084fc', '#ffffff'];
   for (let i = 0; i < 12; i++) {

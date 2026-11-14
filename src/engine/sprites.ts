@@ -332,52 +332,117 @@ function drawBodyCoatDetails(
   }
 }
 
+export interface PixelCatDrawOpts {
+  x: number;
+  y: number;
+  facing: 1 | -1;
+  stage: LifeStage;
+  coat: CoatId;
+  accessory: AccessoryId;
+  state: CatBehaviorState;
+  animTime: number;
+  pixelScale?: number;
+  blush?: boolean;
+  slowBlink?: boolean;
+  pokeStreak?: number;
+  cuddledYarnColor?: string | null;
+}
+
+const CAT_CACHE_PAD = 8;
+const MAX_CAT_FRAME_CACHE = 96;
+const catFrameCache = new Map<string, HTMLCanvasElement>();
+
+export function clearSpriteCache(): void {
+  catFrameCache.clear();
+}
+
+export function getSpriteCacheSize(): number {
+  return catFrameCache.size;
+}
+
+function getCatSpriteSubFrame(opts: PixelCatDrawOpts): string {
+  const { state, animTime, coat, accessory, pokeStreak, cuddledYarnColor } = opts;
+  const starTwinkle = coat === 'starlight_plum' ? Math.floor(animTime * 3) % 2 : 0;
+  const wingFlap = accessory === 'fairy_wings' ? Math.floor(animTime * 6) % 2 : 0;
+  const suffix = `${starTwinkle}:${wingFlap}`;
+
+  if (state === 'trick_spin' || state === 'trick_flip') {
+    return `base:${suffix}`;
+  }
+  if (state === 'stretch') {
+    return `st:${Math.floor(animTime * 4) % 6}:${suffix}`;
+  }
+  if (state === 'roll_wiggle') {
+    return `rw:${Math.floor(animTime * 8) % 4}:${suffix}`;
+  }
+  if (state === 'peek') {
+    return `pk:${Math.floor(animTime * 2.5) % 2}:${Math.floor(animTime * 6) % 4}:${suffix}`;
+  }
+  if (state === 'sleep' || state === 'loaf' || state === 'cuddle_yarn') {
+    return `sl:${Math.floor(animTime * 2) % 2}:${state === 'cuddle_yarn' ? cuddledYarnColor ?? '' : ''}:${suffix}`;
+  }
+  if (state === 'head_bob') {
+    return `hb:${Math.floor(animTime * 4.5) % 4}:${suffix}`;
+  }
+  if (state === 'trick_highfive' || state === 'reach_yarn' || state === 'hold_cursor' || state === 'eat') {
+    return `ff:${Math.floor(animTime * 11) % 2}:${suffix}`;
+  }
+  if (state === 'run' || state === 'zoomies') {
+    return `rn:${Math.floor(animTime * 6) % 2}:${Math.floor(animTime * 11) % 3}:${suffix}`;
+  }
+  if (state === 'poked') {
+    return `po:${(pokeStreak ?? 1) >= 3 ? 3 : 1}:${suffix}`;
+  }
+  if (state === 'sit' || state === 'petted' || state === 'celebrate') {
+    const wagRate = state === 'petted' || state === 'celebrate' ? 8 : 3;
+    return `si:${Math.floor(animTime * wagRate) % 2}:${Math.floor(animTime * 11) % 2}:${suffix}`;
+  }
+  return `f:${Math.floor(animTime * 6) % 2}:${suffix}`;
+}
+
 /**
  * Procedural-pixel crisp sprite composer (integer grid cells -> zero blur).
  * Draws a distinct pixel-art cat for every life stage, pose, coat, and accessory.
  */
 export function drawPixelCat(
   ctx: CanvasRenderingContext2D,
-  opts: {
-    x: number;
-    y: number;
-    facing: 1 | -1;
-    stage: LifeStage;
-    coat: CoatId;
-    accessory: AccessoryId;
-    state: CatBehaviorState;
-    animTime: number;
-    pixelScale?: number;
-    blush?: boolean;
-    pokeStreak?: number;
-    cuddledYarnColor?: string | null;
-  },
+  opts: PixelCatDrawOpts,
 ) {
-  const pal = COAT_PALETTES[opts.coat] ?? COAT_PALETTES.ginger;
   const geo = STAGE_GEOMETRY[opts.stage];
   const s = clampSpriteScale(opts.pixelScale);
 
   const gw = geo.gridWidth;
   const gh = geo.gridHeight;
   const widthPx = gw * s;
+  const heightPx = gh * s;
 
-  const frame = Math.floor(opts.animTime * 6);
-  const fastFrame = Math.floor(opts.animTime * 11);
-  const blink = Math.floor(opts.animTime * 2) % 9 === 0;
+  const isSpin = opts.state === 'trick_spin';
+  const isFlip = opts.state === 'trick_flip';
+  const isSlowBlink = Boolean(opts.slowBlink);
+  const blink = isSlowBlink || Math.floor(opts.animTime * 2) % 9 === 0;
+  const showBlush =
+    Boolean(opts.blush) ||
+    isSlowBlink ||
+    opts.stage === 'tiny_kitten' ||
+    opts.state === 'petted' ||
+    opts.state === 'celebrate' ||
+    opts.state === 'eat' ||
+    opts.state === 'cuddle_yarn' ||
+    opts.state === 'knead' ||
+    opts.state === 'stretch' ||
+    opts.state === 'head_bob' ||
+    opts.state === 'trick_highfive' ||
+    isSpin ||
+    opts.state === 'roll_wiggle' ||
+    opts.state === 'zoomies' ||
+    opts.state === 'peek';
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
   const drawX = Math.round(opts.x);
   const drawY = Math.round(opts.y);
-  const isSpin = opts.state === 'trick_spin';
-  const isHighFive = opts.state === 'trick_highfive';
-  const isFlip = opts.state === 'trick_flip';
-  const isZoomies = opts.state === 'zoomies';
-  const isRollWiggle = opts.state === 'roll_wiggle';
-  const isPeek = opts.state === 'peek';
 
-  const heightPx = gh * s;
   ctx.translate(drawX + (opts.facing === -1 ? widthPx : 0), drawY);
   ctx.scale(opts.facing, 1);
 
@@ -392,6 +457,69 @@ export function drawPixelCat(
     ctx.rotate(opts.animTime * Math.PI * 5.2);
     ctx.translate(-widthPx / 2, -heightPx * 0.55);
   }
+
+  if (typeof document !== 'undefined') {
+    const subFrame = getCatSpriteSubFrame(opts);
+    const cacheKey = `${opts.stage}|${opts.coat}|${opts.accessory}|${opts.state}|${s}|${blink ? 1 : 0}|${showBlush ? 1 : 0}|${subFrame}`;
+    let cached = catFrameCache.get(cacheKey);
+    if (cached) {
+      // Refresh LRU ordering
+      catFrameCache.delete(cacheKey);
+      catFrameCache.set(cacheKey, cached);
+    } else {
+      const offW = (gw + CAT_CACHE_PAD * 2) * s;
+      const offH = (gh + CAT_CACHE_PAD * 2) * s;
+      const offscreen = document.createElement('canvas');
+      offscreen.width = offW;
+      offscreen.height = offH;
+      const offCtx = offscreen.getContext('2d');
+      if (offCtx) {
+        offCtx.imageSmoothingEnabled = false;
+        offCtx.translate(CAT_CACHE_PAD * s, CAT_CACHE_PAD * s);
+        renderPixelCatPose(offCtx, opts, blink, showBlush);
+        if (catFrameCache.size >= MAX_CAT_FRAME_CACHE) {
+          const oldestKey = catFrameCache.keys().next().value;
+          if (oldestKey !== undefined) {
+            catFrameCache.delete(oldestKey);
+          }
+        }
+        catFrameCache.set(cacheKey, offscreen);
+        cached = offscreen;
+      }
+    }
+    if (cached) {
+      ctx.drawImage(cached, -CAT_CACHE_PAD * s, -CAT_CACHE_PAD * s);
+      ctx.restore();
+      return;
+    }
+  }
+
+  renderPixelCatPose(ctx, opts, blink, showBlush);
+  ctx.restore();
+}
+
+function renderPixelCatPose(
+  ctx: CanvasRenderingContext2D,
+  opts: PixelCatDrawOpts,
+  blink: boolean,
+  showBlush: boolean,
+) {
+  const pal = COAT_PALETTES[opts.coat] ?? COAT_PALETTES.ginger;
+  const geo = STAGE_GEOMETRY[opts.stage];
+  const s = clampSpriteScale(opts.pixelScale);
+
+  const gw = geo.gridWidth;
+  const gh = geo.gridHeight;
+
+  const frame = Math.floor(opts.animTime * 6);
+  const fastFrame = Math.floor(opts.animTime * 11);
+
+  const isSpin = opts.state === 'trick_spin';
+  const isHighFive = opts.state === 'trick_highfive';
+  const isFlip = opts.state === 'trick_flip';
+  const isZoomies = opts.state === 'zoomies';
+  const isRollWiggle = opts.state === 'roll_wiggle';
+  const isPeek = opts.state === 'peek';
 
   const px = (gx: number, gy: number, color: string, w = 1, h = 1) => {
     ctx.fillStyle = color;
@@ -428,22 +556,6 @@ export function drawPixelCat(
   const isStalk = opts.state === 'stalk';
   const isHold = opts.state === 'hold_cursor';
   const isBob = opts.state === 'head_bob';
-
-  const showBlush =
-    Boolean(opts.blush) ||
-    opts.stage === 'tiny_kitten' ||
-    opts.state === 'petted' ||
-    opts.state === 'celebrate' ||
-    opts.state === 'eat' ||
-    isCuddleYarn ||
-    isKnead ||
-    isStretch ||
-    isBob ||
-    isHighFive ||
-    isSpin ||
-    isRollWiggle ||
-    isZoomies ||
-    isPeek;
 
   const baseBottom = gh - 1;
   const bobOffset = isWalk ? (frame % 2 === 0 ? 0 : -1) : 0;
@@ -654,36 +766,46 @@ export function drawPixelCat(
       px(hx + geo.headWidth - 2, washY, pal.belly, 1, 2);
     }
   } else if (isRollWiggle) {
-    // Belly-up ticklish bunny-kick wiggle!
-    const wiggle = fastFrame % 2;
+    // Playful side-to-side roll & belly-up bunny-kick wiggle!
+    const rollPhase = Math.floor(opts.animTime * 8) % 4;
+    const rollShiftX = rollPhase === 0 ? -1 : rollPhase === 2 ? 1 : 0;
+    const rollBounceY = rollPhase === 3 ? -1 : 0;
+    const kickSide = rollPhase % 2;
     const bw = geo.bodyWidth + 1;
     const bh = Math.max(4, geo.bodyHeight);
-    const bx = Math.floor((gw - bw) / 2) - 1;
-    const by = baseBottom - bh;
+    const bx = Math.floor((gw - bw) / 2) - 1 + rollShiftX;
+    const by = baseBottom - bh + rollBounceY;
 
-    // Fluffy curling tail wagging underneath
-    px(bx - 3, by + bh - 2 - wiggle, pal.outline, 3, 2);
-    px(bx - 2, by + bh - 2 - wiggle, pal.stripe, 2, 1);
+    // Curling tail sweeping side-to-side underneath
+    const tailSweep = rollPhase <= 1 ? 0 : 1;
+    px(bx - 3, by + bh - 2 - tailSweep, pal.outline, 3, 2);
+    px(bx - 2, by + bh - 2 - tailSweep, pal.stripe, 2, 1);
 
-    // Rolled back + big pale tummy facing up
+    // Rolled torso + pale tummy shifting subtly as kitten rocks left/right
     box(bx, by, bw, bh, pal.body);
-    px(bx + 2, by, pal.belly, Math.max(3, bw - 4), Math.max(2, bh - 1));
+    const tummyOffset = rollPhase === 0 ? 1 : rollPhase === 2 ? 3 : 2;
+    px(bx + tummyOffset, by, pal.belly, Math.max(3, bw - 4), Math.max(2, bh - 1));
     drawBodyCoatDetails(px, opts.coat, bx, by, bw, opts.animTime);
+    if (opts.accessory === 'fairy_wings') {
+      drawFairyWings(px, bx, by + 1, opts.animTime);
+    }
 
     // Four little paws kicking playfully in the air
-    const kickA = wiggle === 0 ? 1 : 0;
-    const kickB = wiggle === 0 ? 0 : 1;
+    const kickA = kickSide === 0 ? 2 : 0;
+    const kickB = kickSide === 0 ? 0 : 2;
     px(bx + 1, by - 2 - kickA, pal.outline, 2, 2);
     px(bx + 1, by - 2 - kickA, pal.belly, 1, 1);
     px(bx + bw - 3, by - 2 - kickB, pal.outline, 2, 2);
     px(bx + bw - 3, by - 2 - kickB, pal.belly, 1, 1);
+    // Tiny back hind toe-bean kick peek
+    px(bx + 3 + (kickSide === 0 ? 0 : 1), by - 1, pal.earInner, 1, 1);
 
-    // Tilted happy head resting on one side
+    // Tilted happy head rocking with roll
     const hx = bx + bw - Math.floor(geo.headWidth * 0.45);
-    const hy = baseBottom - geo.headHeight + wiggle;
+    const hy = baseBottom - geo.headHeight + (rollPhase % 2);
     drawHead(px, box, pal, geo, opts.stage, hx, hy, {
-      closedEyes: false,
-      happyEyes: true,
+      closedEyes: rollPhase === 3,
+      happyEyes: rollPhase !== 3,
       relaxedEyes: false,
       surprisedEyes: false,
       squintEyes: false,
@@ -692,9 +814,12 @@ export function drawPixelCat(
       coat: opts.coat,
       earsTucked: true,
     });
+    drawCollarOrScarf(px, pal, opts.accessory, hx + 1, hy + geo.headHeight - 1, geo.headWidth - 4);
   } else if (isPeek) {
-    // Titlebar/ledge Peek-a-Boo: ears, curious eyes, and two tiny gripping paws!
+    // Titlebar/ledge Peek-a-Boo: wiggling ears, curious eyes, and alternating tapping paws!
     const bobPeek = Math.floor(opts.animTime * 2.5) % 2;
+    const pawTap = Math.floor(opts.animTime * 6) % 4;
+    const earWiggle = pawTap === 1;
     const hx = Math.floor((gw - geo.headWidth) / 2);
     const hy = baseBottom - geo.headHeight + 3 + bobPeek;
     drawHead(px, box, pal, geo, opts.stage, hx, hy, {
@@ -707,42 +832,58 @@ export function drawPixelCat(
       accessory: opts.accessory,
       coat: opts.coat,
       earsTucked: false,
+      earWiggle,
     });
-    // Two little front paws resting right on the edge
-    px(hx - 1, baseBottom - 1, pal.outline, 2, 2);
-    px(hx - 1, baseBottom - 1, pal.belly, 1, 1);
-    px(hx + geo.headWidth - 1, baseBottom - 1, pal.outline, 2, 2);
-    px(hx + geo.headWidth, baseBottom - 1, pal.belly, 1, 1);
+    // Two little front paws tapping alternatingly on the edge
+    const leftLift = pawTap === 1 ? -1 : 0;
+    const rightLift = pawTap === 3 ? -1 : 0;
+    px(hx - 1, baseBottom - 1 + leftLift, pal.outline, 2, 2);
+    px(hx - 1, baseBottom - 1 + leftLift, pal.belly, 1, 1);
+    px(hx + geo.headWidth - 1, baseBottom - 1 + rightLift, pal.outline, 2, 2);
+    px(hx + geo.headWidth, baseBottom - 1 + rightLift, pal.belly, 1, 1);
   } else if (isStretch) {
-    // Cozy big morning stretch: raised hind, dipped shoulders, extended front paws!
+    // Multi-phase cozy big stretch: lean & dip -> peak quiver -> big yawn -> settle!
+    const stretchPhase = Math.floor(opts.animTime * 4) % 6;
+    const stretchReach = stretchPhase <= 1 ? 1 : stretchPhase <= 3 ? 3 : 2;
+    const stretchDip = stretchPhase >= 2 && stretchPhase <= 4 ? 1 : 0;
+    const stretchQuiver = stretchPhase === 3 ? 1 : 0;
+    const isYawn = stretchPhase === 4;
+
     const bw = geo.bodyWidth + 1;
     const bh = Math.max(3, geo.bodyHeight - 1);
     const legH = Math.max(2, geo.legHeight);
     const bx = Math.floor((gw - bw) / 2) - 2;
-    const by = baseBottom - legH - bh + 1;
+    const by = baseBottom - legH - bh + 1 + stretchDip;
 
-    // High curved tail
-    for (let i = 0; i < Math.min(3, geo.tailLen); i++) {
+    // High curved tail rising and curling smoothly with stretch phase
+    const tailCount = Math.min(3, geo.tailLen);
+    const tailWag = stretchPhase % 2 === 0 ? 0 : -1;
+    for (let i = 0; i < tailCount; i++) {
       const tx = bx - 1 - i;
-      const ty = by - 1 - i;
+      const ty = by - 1 - i - (i === tailCount - 1 ? -tailWag : 0);
       px(tx, ty - 1, pal.outline, 1, 3);
       px(tx, ty, i % 2 === 0 ? pal.body : pal.stripe, 1, 1);
     }
 
-    // Back legs tall
-    px(bx + 1, by + bh - 1, pal.outline, 2, legH + 1);
-    px(bx + 1, by + bh - 1, pal.shade, 1, legH);
+    // Back legs tall & braced
+    px(bx + 1, by + bh - 1, pal.outline, 2, legH + 1 - stretchDip);
+    px(bx + 1, by + bh - 1, pal.shade, 1, Math.max(1, legH - stretchDip));
     px(bx + 1, baseBottom, pal.belly, 2, 1);
 
-    // Dipped elongated torso + outstretched front paws
-    box(bx, by, bw, bh, pal.body);
-    px(bx + 3, by + 1, pal.body, bw - 2, bh - 1);
-    px(bx + bw, baseBottom - 1, pal.outline, 3, 2);
-    px(bx + bw, baseBottom - 1, pal.belly, 2, 1);
+    // Dipped elongated torso + sliding outstretched front paws
+    box(bx, by + stretchQuiver, bw, bh, pal.body);
+    px(bx + 3, by + 1 + stretchQuiver, pal.body, bw - 2, bh - 1);
+    drawBodyCoatDetails(px, opts.coat, bx, by + stretchQuiver, bw, opts.animTime);
+    if (opts.accessory === 'fairy_wings') {
+      drawFairyWings(px, bx + 1, by - 2 + stretchQuiver, opts.animTime);
+    }
 
-    // Head lowered happily
-    const hx = bx + bw - Math.floor(geo.headWidth * 0.5);
-    const hy = by - geo.headHeight + 4;
+    px(bx + bw - 1, baseBottom - 1, pal.outline, 2 + stretchReach, 2);
+    px(bx + bw, baseBottom - 1, pal.belly, 1 + stretchReach, 1);
+
+    // Head lowered happily during reach, lifting slightly for a tiny yawn at phase 4
+    const hx = bx + bw - Math.floor(geo.headWidth * 0.5) + (stretchPhase >= 2 && stretchPhase <= 3 ? 1 : 0);
+    const hy = by - geo.headHeight + 4 - (isYawn ? 1 : 0);
     drawHead(px, box, pal, geo, opts.stage, hx, hy, {
       closedEyes: true,
       happyEyes: false,
@@ -752,7 +893,8 @@ export function drawPixelCat(
       blush: showBlush,
       accessory: opts.accessory,
       coat: opts.coat,
-      earsTucked: false,
+      earsTucked: stretchPhase === 2 || stretchPhase === 3,
+      yawnMouth: isYawn,
     });
     drawCollarOrScarf(px, pal, opts.accessory, hx + 1, hy + geo.headHeight - 1, geo.headWidth - 4);
   } else {
@@ -956,71 +1098,6 @@ export function drawPixelButterfly(ctx: CanvasRenderingContext2D, b: ButterflyEn
   ctx.restore();
 }
 
-export function drawFeatherWand(
-  ctx: CanvasRenderingContext2D,
-  wand: { x: number; y: number; heldByCursor?: boolean },
-  cursorX: number | undefined,
-  cursorY: number | undefined,
-  animTime: number,
-) {
-  ctx.save();
-  ctx.imageSmoothingEnabled = false;
-
-  const wx = Math.round(wand.x);
-  const wy = Math.round(wand.y);
-  const s = 3;
-
-  // Handle attaches to cursor when held, or rests at an angle above the bell when sitting on desktop
-  const handleX =
-    wand.heldByCursor && typeof cursorX === 'number' ? Math.round(cursorX) : wx - 16;
-  const handleY =
-    wand.heldByCursor && typeof cursorY === 'number' ? Math.round(cursorY) : wy - 20;
-
-  // Pastel wooden/lavender wand stick + tip
-  ctx.strokeStyle = '#2e1f47';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(handleX - 10, handleY - 12);
-  ctx.lineTo(handleX, handleY);
-  ctx.stroke();
-
-  ctx.strokeStyle = '#d7bdf9';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(handleX - 10, handleY - 12);
-  ctx.lineTo(handleX, handleY);
-  ctx.stroke();
-
-  // Flowing lavender ribbon string from handle tip to bell + feathers
-  ctx.strokeStyle = '#9d74db';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(handleX, handleY);
-  const midX = (handleX + wx) / 2 + Math.sin(animTime * 8) * (wand.heldByCursor ? 6 : 2);
-  const midY = (handleY + wy) / 2 + 6;
-  ctx.quadraticCurveTo(Math.round(midX), Math.round(midY), wx, wy);
-  ctx.stroke();
-
-  // Little golden bell at tip
-  ctx.fillStyle = '#2e1f47';
-  ctx.fillRect(wx - s, wy - s, s * 2, s * 2);
-  ctx.fillStyle = '#f7ca3e';
-  ctx.fillRect(wx - s + 1, wy - s + 1, s * 2 - 2, s * 2 - 2);
-
-  // Fluffy cream & lavender pixel feathers hanging below bell
-  const sway = wand.heldByCursor ? Math.round(Math.sin(animTime * 10) * 2) : Math.round(Math.sin(animTime * 3) * 1);
-  ctx.fillStyle = '#2e1f47';
-  ctx.fillRect(wx - 2 * s + sway, wy + s, 4 * s, 3 * s);
-  ctx.fillStyle = '#c8a6f7';
-  ctx.fillRect(wx - 2 * s + sway + 1, wy + s, 2 * s, 2 * s);
-  ctx.fillStyle = '#fffdf9';
-  ctx.fillRect(wx + sway, wy + s + 1, 2 * s - 1, 2 * s);
-  ctx.fillStyle = '#f0a3d5';
-  ctx.fillRect(wx - s + sway, wy + s + 2, s, s);
-
-  ctx.restore();
-}
-
 function drawHead(
   px: (gx: number, gy: number, color: string, w?: number, h?: number) => void,
   box: (gx: number, gy: number, w: number, h: number, fill: string) => void,
@@ -1039,20 +1116,23 @@ function drawHead(
     accessory: AccessoryId;
     coat: CoatId;
     earsTucked: boolean;
+    earWiggle?: boolean;
+    yawnMouth?: boolean;
   },
 ) {
   const hw = geo.headWidth;
   const hh = geo.headHeight;
   const earH = opts.earsTucked ? Math.max(2, geo.earHeight - 1) : geo.earHeight;
+  const rightEarShift = opts.earWiggle ? -1 : 0;
 
   // Left & Right Ears (distinct height & tufts per stage!)
   px(hx, hy - earH, pal.outline, 3, earH);
   px(hx + 1, hy - earH + 1, pal.body, 1, earH - 1);
   px(hx + 1, hy - 1, pal.earInner, 1, 1);
 
-  px(hx + hw - 3, hy - earH, pal.outline, 3, earH);
-  px(hx + hw - 2, hy - earH + 1, pal.body, 1, earH - 1);
-  px(hx + hw - 2, hy - 1, pal.earInner, 1, 1);
+  px(hx + hw - 3, hy - earH + rightEarShift, pal.outline, 3, earH);
+  px(hx + hw - 2, hy - earH + 1 + rightEarShift, pal.body, 1, earH - 1);
+  px(hx + hw - 2, hy - 1 + rightEarShift, pal.earInner, 1, 1);
 
   if (geo.hasEarTufts && !opts.earsTucked) {
     px(hx + 1, hy - earH - 1, pal.outline, 1, 1);
@@ -1156,8 +1236,11 @@ function drawHead(
     px(ex1 + 3, ey, '#f7ca3e', 1, 1); // gold bridge
   }
 
-  // Nose
+  // Nose (+ cozy little pink yawn pixel during stretch peak)
   px(hx + hw - 4, hy + hh - 2, pal.earInner, 1, 1);
+  if (opts.yawnMouth) {
+    px(hx + hw - 4, hy + hh - 1, '#d95f76', 2, 1);
+  }
 
   // Head Accessories
   const midX = hx + Math.floor(hw / 2);
@@ -1779,16 +1862,12 @@ export interface QuickWheelItemDef {
   id: QuickWheelActionId;
   icon: string;
   label: string;
-  toggleKey?: 'laserActive' | 'brushActive' | 'giftBoxActive';
 }
 
 export const QUICK_WHEEL_ITEMS: QuickWheelItemDef[] = [
   { id: 'treat', icon: '🍨', label: 'Treat' },
-  { id: 'laser', icon: '🟣', label: 'Laser', toggleKey: 'laserActive' },
-  { id: 'brush', icon: '✨', label: 'Brush', toggleKey: 'brushActive' },
   { id: 'trick', icon: '🌟', label: 'Trick' },
   { id: 'bubbles', icon: '🫧', label: 'Bubbles' },
-  { id: 'box', icon: '🎁', label: 'Gift Box', toggleKey: 'giftBoxActive' },
   { id: 'snap', icon: '📷', label: 'Snap' },
   { id: 'hud', icon: '⚙️', label: 'Menu' },
 ];
@@ -1806,43 +1885,76 @@ export interface QuickWheelButtonRect {
   active: boolean;
 }
 
+export interface QuickWheelCenterRect {
+  cx: number;
+  cy: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+}
+
+const QUICK_WHEEL_RADIUS = 92;
+const QUICK_WHEEL_PILL_W = 84;
+const QUICK_WHEEL_PILL_H = 34;
+const QUICK_WHEEL_MARGIN = 16;
+
+function getQuickWheelCenter(
+  wheel: QuickWheelState,
+  bounds: { x: number; y: number; width: number; height: number },
+): { cx: number; cy: number } {
+  const safeCenterX = Math.max(
+    bounds.x + QUICK_WHEEL_RADIUS + QUICK_WHEEL_PILL_W / 2 + QUICK_WHEEL_MARGIN,
+    Math.min(bounds.x + bounds.width - QUICK_WHEEL_RADIUS - QUICK_WHEEL_PILL_W / 2 - QUICK_WHEEL_MARGIN, wheel.x),
+  );
+  const safeCenterY = Math.max(
+    bounds.y + QUICK_WHEEL_RADIUS + QUICK_WHEEL_PILL_H / 2 + QUICK_WHEEL_MARGIN,
+    Math.min(bounds.y + bounds.height - QUICK_WHEEL_RADIUS - QUICK_WHEEL_PILL_H / 2 - QUICK_WHEEL_MARGIN, wheel.y),
+  );
+  return { cx: Math.round(safeCenterX), cy: Math.round(safeCenterY) };
+}
+
+export function getQuickWheelCenterRect(
+  wheel: QuickWheelState,
+  bounds: { x: number; y: number; width: number; height: number },
+): QuickWheelCenterRect | null {
+  if (!wheel.active) return null;
+  const { cx, cy } = getQuickWheelCenter(wheel, bounds);
+  const radius = 24;
+  return {
+    cx,
+    cy,
+    x: cx - radius,
+    y: cy - radius,
+    width: radius * 2,
+    height: radius * 2,
+    radius,
+  };
+}
+
 export function getQuickWheelLayout(
   wheel: QuickWheelState,
   bounds: { x: number; y: number; width: number; height: number },
-  flags?: { laserActive?: boolean; brushActive?: boolean; giftBoxActive?: boolean },
 ): QuickWheelButtonRect[] {
   if (!wheel.active) return [];
-
-  const ringRadius = 74;
-  const pillW = 64;
-  const pillH = 28;
-  const margin = 12;
-
-  const safeCenterX = Math.max(
-    bounds.x + ringRadius + pillW / 2 + margin,
-    Math.min(bounds.x + bounds.width - ringRadius - pillW / 2 - margin, wheel.x),
-  );
-  const safeCenterY = Math.max(
-    bounds.y + ringRadius + pillH / 2 + margin,
-    Math.min(bounds.y + bounds.height - ringRadius - pillH / 2 - margin, wheel.y),
-  );
+  const { cx: safeCenterX, cy: safeCenterY } = getQuickWheelCenter(wheel, bounds);
 
   return QUICK_WHEEL_ITEMS.map((item, idx) => {
     const angle = -Math.PI / 2 + (idx * Math.PI * 2) / QUICK_WHEEL_ITEMS.length;
-    const cx = Math.round(safeCenterX + Math.cos(angle) * ringRadius);
-    const cy = Math.round(safeCenterY + Math.sin(angle) * ringRadius);
-    const active = item.toggleKey ? Boolean(flags?.[item.toggleKey]) : false;
+    const cx = Math.round(safeCenterX + Math.cos(angle) * QUICK_WHEEL_RADIUS);
+    const cy = Math.round(safeCenterY + Math.sin(angle) * QUICK_WHEEL_RADIUS);
     return {
       id: item.id,
       icon: item.icon,
       label: item.label,
       cx,
       cy,
-      x: Math.round(cx - pillW / 2),
-      y: Math.round(cy - pillH / 2),
-      width: pillW,
-      height: pillH,
-      active,
+      x: Math.round(cx - QUICK_WHEEL_PILL_W / 2),
+      y: Math.round(cy - QUICK_WHEEL_PILL_H / 2),
+      width: QUICK_WHEEL_PILL_W,
+      height: QUICK_WHEEL_PILL_H,
+      active: false,
     };
   });
 }
@@ -1948,11 +2060,10 @@ export function drawQuickWheel(
   ctx: CanvasRenderingContext2D,
   wheel: QuickWheelState,
   bounds: { x: number; y: number; width: number; height: number },
-  flags?: { laserActive?: boolean; brushActive?: boolean; giftBoxActive?: boolean },
 ) {
   if (!wheel.active) return;
 
-  const buttons = getQuickWheelLayout(wheel, bounds, flags);
+  const buttons = getQuickWheelLayout(wheel, bounds);
   if (buttons.length === 0) return;
 
   const centerX =
@@ -1967,7 +2078,7 @@ export function drawQuickWheel(
   ctx.lineWidth = 2;
   ctx.setLineDash([5, 5]);
   ctx.beginPath();
-  ctx.arc(centerX, centerY, 74, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, 92, 0, Math.PI * 2);
   ctx.stroke();
   ctx.setLineDash([]);
 
@@ -1989,11 +2100,29 @@ export function drawQuickWheel(
     ctx.lineWidth = hovered ? 2 : 1.5;
     ctx.strokeRect(btn.x, btn.y, btn.width, btn.height);
 
-    ctx.font = 'bold 10px "Cascadia Mono", Consolas, monospace';
+    ctx.font = 'bold 11px "Cascadia Mono", Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = hovered ? '#ffffff' : '#f7ecff';
     ctx.fillText(`${btn.icon} ${btn.label}`, btn.cx, btn.cy + 1);
+  }
+
+  const centerRect = getQuickWheelCenterRect(wheel, bounds);
+  if (centerRect) {
+    const hubHovered = Boolean(wheel.hoveredCenter);
+    ctx.fillStyle = hubHovered ? '#6e45a8' : 'rgba(34, 20, 56, 0.94)';
+    ctx.beginPath();
+    ctx.arc(centerRect.cx, centerRect.cy, centerRect.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = hubHovered ? '#f1d4ff' : '#9c78d1';
+    ctx.lineWidth = hubHovered ? 2 : 1.5;
+    ctx.stroke();
+
+    ctx.font = 'bold 11px "Cascadia Mono", Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = hubHovered ? '#ffffff' : '#e8d4ff';
+    ctx.fillText(hubHovered ? '♥ Pet' : '🐾', centerRect.cx, centerRect.cy + 1);
   }
 
   ctx.restore();

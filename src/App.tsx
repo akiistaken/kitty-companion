@@ -9,6 +9,8 @@ import {
   spawnShootingStar,
   spawnYarnVanishParticles,
   stepCatAI,
+  triggerCatRoll,
+  triggerCatStretch,
   triggerCatTrick,
   triggerCatZoomies,
   triggerGiftBoxAmbush,
@@ -26,7 +28,6 @@ import {
   stepBubbles,
   stepButterflies,
   stepCushionPhysics,
-  stepFeatherWandPhysics,
   stepGiftBoxPhysics,
   stepLanternPhysics,
   stepPlantPhysics,
@@ -50,6 +51,7 @@ import {
 import { kittenAudio } from './engine/sound';
 import {
   getLoveNoteSaveRect,
+  getQuickWheelCenterRect,
   getQuickWheelLayout,
   getStageDimensions,
 } from './engine/sprites';
@@ -62,7 +64,6 @@ import {
   CoatId,
   CushionEntity,
   DesktopSnapshot,
-  FeatherWandState,
   FocusState,
   GiftBoxEntity,
   HitRect,
@@ -135,13 +136,6 @@ export const App: React.FC = () => {
     offsetY: 0,
     lastX: 0,
     lastY: 0,
-    vx: 0,
-    vy: 0,
-  });
-  const featherWandRef = useRef<FeatherWandState>({
-    active: false,
-    x: 0,
-    y: 0,
     vx: 0,
     vy: 0,
   });
@@ -226,13 +220,6 @@ export const App: React.FC = () => {
     vx: 0,
     vy: 0,
   });
-  const featherWandDragRef = useRef<{
-    dragging: boolean;
-    lastX: number;
-    lastY: number;
-    vx: number;
-    vy: number;
-  }>({ dragging: false, lastX: 0, lastY: 0, vx: 0, vy: 0 });
   const butterfliesRef = useRef<ButterflyEntity[]>([]);
   const butterflySpawnTimerRef = useRef<number>(22 + Math.random() * 40);
   const careWhisperTimerRef = useRef<number>(95 + Math.random() * 85);
@@ -256,7 +243,6 @@ export const App: React.FC = () => {
         save: nextSave,
         focus: nextFocus,
         teaseYarnActive: teaseYarnActiveRef.current,
-        featherWandActive: featherWandRef.current.active,
         cushionActive: cushionRef.current.active,
         laserActive: laserActiveRef.current,
         plantActive: plantRef.current.active,
@@ -346,6 +332,7 @@ export const App: React.FC = () => {
   });
   const holdSentActiveRef = useRef<boolean>(false);
   const saveDirtyRef = useRef<boolean>(false);
+  const saveDebounceTimerRef = useRef<number | null>(null);
 
   const [onboardingPhase, setOnboardingPhase] = useState<OnboardingPhase>('loading');
   const onboardingPhaseRef = useRef<OnboardingPhase>('loading');
@@ -474,6 +461,10 @@ export const App: React.FC = () => {
 
   const persistNow = useCallback(async (next: KittenSaveState) => {
     saveDirtyRef.current = false;
+    if (saveDebounceTimerRef.current !== null) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
+    }
     if (isTauriEnv()) {
       await invoke('save_kitten_state', { json: JSON.stringify(next) }).catch(() => {});
     } else {
@@ -484,6 +475,19 @@ export const App: React.FC = () => {
       }
     }
   }, []);
+
+  const scheduleDebouncedSave = useCallback(() => {
+    saveDirtyRef.current = true;
+    if (saveDebounceTimerRef.current !== null) {
+      clearTimeout(saveDebounceTimerRef.current);
+    }
+    saveDebounceTimerRef.current = window.setTimeout(() => {
+      saveDebounceTimerRef.current = null;
+      if (saveDirtyRef.current) {
+        void persistNow(saveRef.current);
+      }
+    }, 1500);
+  }, [persistNow]);
 
   const commitSave = useCallback((mutator: (draft: KittenSaveState) => void, immediate = false) => {
     setSave((prev) => {
@@ -497,12 +501,12 @@ export const App: React.FC = () => {
       if (immediate) {
         void persistNow(clone);
       } else {
-        saveDirtyRef.current = true;
+        scheduleDebouncedSave();
       }
       publishBridgeState(clone, focusRef.current);
       return clone;
     });
-  }, [persistNow, publishBridgeState]);
+  }, [persistNow, publishBridgeState, scheduleDebouncedSave]);
 
   const toggleHud = useCallback(() => {
     publishBridgeState(saveRef.current, focusRef.current);
@@ -545,14 +549,25 @@ export const App: React.FC = () => {
     wakeLoopRef.current?.();
   }, []);
 
+  const playBubbleMew = useCallback((highPitch = false) => {
+    const s = saveRef.current.settings;
+    kittenAudio.enabled = s.soundEnabled;
+    kittenAudio.volume = s.volume;
+    kittenAudio.style = s.soundStyle ?? 'chiptune';
+    kittenAudio.setStage(saveRef.current.stage);
+    kittenAudio.playMew(highPitch);
+  }, []);
+
   const pokeCat = useCallback(() => {
     const ev = triggerPokeCat(catRef.current, saveRef.current, particlesRef.current);
     if (ev.evolvedLabel) {
       kittenAudio.playUnlock();
+      playBubbleMew(true);
       catRef.current.statusBubble = `Grew: ${STAGE_THRESHOLDS[ev.evolvedLabel as keyof typeof STAGE_THRESHOLDS]?.label ?? ev.evolvedLabel}!`;
       catRef.current.statusBubbleTimer = 4.0;
     } else if (ev.achievementBanner) {
       kittenAudio.playUnlock();
+      playBubbleMew(true);
       catRef.current.statusBubble = `Badge: ${ev.achievementBanner}`;
       catRef.current.statusBubbleTimer = 3.5;
     }
@@ -560,7 +575,7 @@ export const App: React.FC = () => {
     saveDirtyRef.current = true;
     publishBridgeState(saveRef.current, focusRef.current);
     wakeLoopRef.current?.();
-  }, [publishBridgeState]);
+  }, [playBubbleMew, publishBridgeState]);
 
   const clearYarn = useCallback(() => {
     teaseYarnActiveRef.current = false;
@@ -589,7 +604,6 @@ export const App: React.FC = () => {
     const next = !teaseYarnActiveRef.current;
     teaseYarnActiveRef.current = next;
     if (next) {
-      featherWandRef.current.active = false;
       const snap = snapshotRef.current;
       // Reuse existing loose yarn if available, or spawn a fresh pastel yarn ball!
       let yarn = toysRef.current.find((t) => t.kind === 'yarn');
@@ -632,30 +646,6 @@ export const App: React.FC = () => {
     publishBridgeState(saveRef.current, focusRef.current);
   }, [publishBridgeState]);
 
-  const toggleFeatherWand = useCallback(() => {
-    const cat = catRef.current;
-    const snap = snapshotRef.current;
-    const dims = getStageDimensions(saveRef.current.stage, saveRef.current.settings.spriteScale);
-    const mon = findMonitorForPoint(snap.monitors, cat.x, cat.y);
-    const spawnX = cat.x + dims.width / 2 + (Math.random() * 140 - 70);
-    const spawnY = Math.max((mon?.workY ?? 0) + 40, cat.y - 180);
-
-    featherWandDragRef.current.dragging = false;
-    featherWandRef.current = {
-      active: true,
-      x: spawnX,
-      y: spawnY,
-      vx: (Math.random() < 0.5 ? -1 : 1) * (150 + Math.random() * 110),
-      vy: -220,
-      grounded: false,
-      heldByCursor: false,
-      idleSeconds: 0,
-    };
-    kittenAudio.setStage(saveRef.current.stage);
-    kittenAudio.playBellJingle();
-    publishBridgeState(saveRef.current, focusRef.current);
-  }, [publishBridgeState]);
-
   const toggleCushion = useCallback(() => {
     const next = !cushionRef.current.active;
     if (next) {
@@ -676,6 +666,7 @@ export const App: React.FC = () => {
         grounded: false,
       };
       kittenAudio.playToyBat();
+      playBubbleMew();
       catRef.current.statusBubble = 'Comfy cushion!';
       catRef.current.statusBubbleTimer = 2.0;
     } else {
@@ -689,7 +680,7 @@ export const App: React.FC = () => {
       cushionRef.current.active = false;
     }
     publishBridgeState(saveRef.current, focusRef.current);
-  }, [publishBridgeState]);
+  }, [playBubbleMew, publishBridgeState]);
 
   const toggleLaser = useCallback(() => {
     const next = !laserActiveRef.current;
@@ -703,9 +694,10 @@ export const App: React.FC = () => {
       catRef.current.statusBubble = 'Violet dot!! ✨';
       catRef.current.statusBubbleTimer = 1.6;
       kittenAudio.playTrill(false);
+      playBubbleMew();
     }
     publishBridgeState(saveRef.current, focusRef.current);
-  }, [publishBridgeState]);
+  }, [playBubbleMew, publishBridgeState]);
 
   const toggleBrush = useCallback(() => {
     const next = !brushActiveRef.current;
@@ -719,9 +711,10 @@ export const App: React.FC = () => {
       catRef.current.statusBubble = 'Brush time! ✨';
       catRef.current.statusBubbleTimer = 1.6;
       kittenAudio.playBrushStroke();
+      playBubbleMew();
     }
     publishBridgeState(saveRef.current, focusRef.current);
-  }, [publishBridgeState]);
+  }, [playBubbleMew, publishBridgeState]);
 
   const spawnBubbles = useCallback(() => {
     const cat = catRef.current;
@@ -752,10 +745,11 @@ export const App: React.FC = () => {
       });
     }
     kittenAudio.playBubblePop(0);
+    playBubbleMew();
     cat.statusBubble = 'Soap bubbles! 🫧';
     cat.statusBubbleTimer = 1.8;
     wakeLoopRef.current?.();
-  }, []);
+  }, [playBubbleMew]);
 
   const toggleGiftBox = useCallback(() => {
     const next = !giftBoxRef.current.active;
@@ -780,6 +774,7 @@ export const App: React.FC = () => {
         cooldown: 0,
       };
       kittenAudio.playToyBat();
+      playBubbleMew();
       catRef.current.statusBubble = 'A gift box!! 🎁';
       catRef.current.statusBubbleTimer = 2.0;
     } else {
@@ -798,7 +793,7 @@ export const App: React.FC = () => {
       giftBoxRef.current.active = false;
     }
     publishBridgeState(saveRef.current, focusRef.current);
-  }, [publishBridgeState]);
+  }, [playBubbleMew, publishBridgeState]);
 
   const toggleLantern = useCallback(() => {
     if (onboardingPhaseRef.current !== 'done') return;
@@ -837,6 +832,7 @@ export const App: React.FC = () => {
         grounded: false,
       };
       kittenAudio.playLanternClick(true);
+      playBubbleMew();
       catRef.current.statusBubble = 'Moonlight lantern! 🏮';
       catRef.current.statusBubbleTimer = 2.0;
     } else {
@@ -852,7 +848,7 @@ export const App: React.FC = () => {
     }
     publishBridgeState(saveRef.current, focusRef.current);
     wakeLoopRef.current?.();
-  }, [getPrimaryMonitor, publishBridgeState]);
+  }, [getPrimaryMonitor, playBubbleMew, publishBridgeState]);
 
   const summonShootingStar = useCallback(() => {
     if (onboardingPhaseRef.current !== 'done') return;
@@ -862,15 +858,17 @@ export const App: React.FC = () => {
       shootingStarsRef.current.shift();
     }
     shootingStarsRef.current.push(star);
+    playBubbleMew(true);
     catRef.current.statusBubble = 'A shooting star! Click it! 🌠';
     catRef.current.statusBubbleTimer = 2.4;
     wakeLoopRef.current?.();
-  }, []);
+  }, [playBubbleMew]);
 
   const makeJarWish = useCallback(() => {
     if (onboardingPhaseRef.current !== 'done') return;
     const res = spendStarJarForWish(saveRef.current);
     if (!res.ok) {
+      playBubbleMew();
       catRef.current.statusBubble = 'Need 5 ★ in Star Jar';
       catRef.current.statusBubbleTimer = 1.8;
       return;
@@ -896,6 +894,7 @@ export const App: React.FC = () => {
       });
     }
     kittenAudio.playWishChime();
+    playBubbleMew(true);
     catRef.current.blushTimer = 3.0;
     catRef.current.statusBubble = 'Star Jar wish granted! 🌠';
     catRef.current.statusBubbleTimer = 2.8;
@@ -910,28 +909,47 @@ export const App: React.FC = () => {
     }
     commitSave(() => {}, true);
     wakeLoopRef.current?.();
-  }, [commitSave]);
+  }, [commitSave, playBubbleMew]);
+
+  const applyStepOutcome = useCallback(
+    (res: { evolvedLabel?: string; achievementBanner?: string; mementoBanner?: string }) => {
+      commitSave(() => {}, false);
+      if (res.evolvedLabel) {
+        kittenAudio.playUnlock();
+        playBubbleMew(true);
+        catRef.current.statusBubble = `Grew: ${STAGE_THRESHOLDS[res.evolvedLabel as keyof typeof STAGE_THRESHOLDS]?.label ?? res.evolvedLabel}!`;
+        catRef.current.statusBubbleTimer = 4.0;
+      } else if (res.achievementBanner) {
+        kittenAudio.playUnlock();
+        playBubbleMew(true);
+        catRef.current.statusBubble = `Badge: ${res.achievementBanner}`;
+        catRef.current.statusBubbleTimer = 3.5;
+      } else if (res.mementoBanner) {
+        kittenAudio.playUnlock();
+        playBubbleMew(true);
+        catRef.current.statusBubble = `Gift: ${res.mementoBanner}!`;
+        catRef.current.statusBubbleTimer = 3.5;
+      }
+      publishBridgeState(saveRef.current, focusRef.current);
+      wakeLoopRef.current?.();
+    },
+    [commitSave, playBubbleMew, publishBridgeState],
+  );
 
   const doTrick = useCallback(() => {
     if (onboardingPhaseRef.current !== 'done') return;
-    const res = triggerCatTrick(catRef.current, saveRef.current, particlesRef.current);
-    commitSave(() => {}, false);
-    if (res.evolvedLabel) {
-      kittenAudio.playUnlock();
-      catRef.current.statusBubble = `Grew: ${STAGE_THRESHOLDS[res.evolvedLabel as keyof typeof STAGE_THRESHOLDS]?.label ?? res.evolvedLabel}!`;
-      catRef.current.statusBubbleTimer = 4.0;
-    } else if (res.achievementBanner) {
-      kittenAudio.playUnlock();
-      catRef.current.statusBubble = `Badge: ${res.achievementBanner}`;
-      catRef.current.statusBubbleTimer = 3.5;
-    } else if (res.mementoBanner) {
-      kittenAudio.playUnlock();
-      catRef.current.statusBubble = `Gift: ${res.mementoBanner}!`;
-      catRef.current.statusBubbleTimer = 3.5;
-    }
-    publishBridgeState(saveRef.current, focusRef.current);
-    wakeLoopRef.current?.();
-  }, [commitSave, publishBridgeState]);
+    applyStepOutcome(triggerCatTrick(catRef.current, saveRef.current, particlesRef.current));
+  }, [applyStepOutcome]);
+
+  const doStretch = useCallback(() => {
+    if (onboardingPhaseRef.current !== 'done') return;
+    applyStepOutcome(triggerCatStretch(catRef.current, saveRef.current, particlesRef.current));
+  }, [applyStepOutcome]);
+
+  const doRoll = useCallback(() => {
+    if (onboardingPhaseRef.current !== 'done') return;
+    applyStepOutcome(triggerCatRoll(catRef.current, saveRef.current, particlesRef.current));
+  }, [applyStepOutcome]);
 
   const snapPolaroidMemory = useCallback(() => {
     const cat = catRef.current;
@@ -995,6 +1013,7 @@ export const App: React.FC = () => {
         swayTimer: 0.8,
       };
       kittenAudio.playToyBat();
+      playBubbleMew();
       catRef.current.statusBubble = 'Blooming lavender! 🪻';
       catRef.current.statusBubbleTimer = 2.0;
     } else {
@@ -1008,7 +1027,7 @@ export const App: React.FC = () => {
       plantRef.current.active = false;
     }
     publishBridgeState(saveRef.current, focusRef.current);
-  }, [publishBridgeState]);
+  }, [playBubbleMew, publishBridgeState]);
 
   const toggleFocus = useCallback(() => {
     setFocus((prev) => {
@@ -1016,6 +1035,7 @@ export const App: React.FC = () => {
         return { ...prev, active: false };
       }
       const total = saveRef.current.settings.focusMinutes * 60;
+      playBubbleMew();
       catRef.current.statusBubble = 'Focus Nap!';
       catRef.current.statusBubbleTimer = 2.0;
       return {
@@ -1025,7 +1045,7 @@ export const App: React.FC = () => {
         startedAt: Date.now(),
       };
     });
-  }, []);
+  }, [playBubbleMew]);
 
   // Startup sequence: sync bounds, scan desktop, load saved state, report splash progress
   useEffect(() => {
@@ -1085,6 +1105,7 @@ export const App: React.FC = () => {
               settings: {
                 ...defaults.settings,
                 ...parsed.settings,
+                growthPace: 'very_slow',
                 userName: parsed.settings?.userName?.trim() || defaults.settings.userName,
               },
             };
@@ -1171,9 +1192,6 @@ export const App: React.FC = () => {
         case 'toggle_tease_yarn':
           toggleTeaseYarn();
           break;
-        case 'toggle_feather_wand':
-          toggleFeatherWand();
-          break;
         case 'toggle_cushion':
           toggleCushion();
           break;
@@ -1235,9 +1253,6 @@ export const App: React.FC = () => {
           case 'toggleTeaseYarn':
             toggleTeaseYarn();
             break;
-          case 'toggleFeatherWand':
-            toggleFeatherWand();
-            break;
           case 'toggleCushion':
             toggleCushion();
             break;
@@ -1267,6 +1282,12 @@ export const App: React.FC = () => {
             break;
           case 'doTrick':
             doTrick();
+            break;
+          case 'doStretch':
+            doStretch();
+            break;
+          case 'doRoll':
+            doRoll();
             break;
           case 'clearYarn':
             clearYarn();
@@ -1310,7 +1331,6 @@ export const App: React.FC = () => {
             laserActiveRef.current = false;
             brushActiveRef.current = false;
             quickWheelRef.current.active = false;
-            featherWandRef.current.active = false;
             cushionRef.current.active = false;
             plantRef.current.active = false;
             giftBoxRef.current.active = false;
@@ -1335,7 +1355,6 @@ export const App: React.FC = () => {
             laserActiveRef.current = false;
             brushActiveRef.current = false;
             quickWheelRef.current.active = false;
-            featherWandRef.current.active = false;
             cushionRef.current.active = false;
             plantRef.current.active = false;
             giftBoxRef.current.active = false;
@@ -1385,7 +1404,7 @@ export const App: React.FC = () => {
       unlistenHudClosed?.();
       unlistenHudAction?.();
     };
-  }, [clearYarn, commitSave, persistNow, pokeCat, publishBridgeState, setPhase, toggleCushion, toggleFeatherWand, toggleFocus, toggleHud, toggleLaser, togglePlant, toggleTeaseYarn, tossToy]);
+  }, [clearYarn, commitSave, persistNow, pokeCat, publishBridgeState, setPhase, toggleCushion, toggleFocus, toggleHud, toggleLaser, togglePlant, toggleTeaseYarn, tossToy]);
 
   // Poll Win32 Desktop Snapshot (adaptive 120ms-320ms) & Periodic Save
   useEffect(() => {
@@ -1421,7 +1440,7 @@ export const App: React.FC = () => {
           (st === 'sleep' || st === 'loaf' || st === 'cuddle_yarn');
         snapTimerId = window.setTimeout(
           () => void pollSnapshot(),
-          fastCursor ? 120 : calmSleep ? 600 : 320,
+          fastCursor ? 120 : snapshotRef.current.isFullscreenForeground ? 900 : calmSleep ? 600 : 320,
         );
       }
     };
@@ -1437,12 +1456,24 @@ export const App: React.FC = () => {
         void invoke('sync_overlay_bounds').catch(() => {});
       }
     }, 10000);
+    const flushOnUnload = () => {
+      if (saveDirtyRef.current) {
+        void persistNow(saveRef.current);
+      }
+    };
+    window.addEventListener('beforeunload', flushOnUnload);
 
     return () => {
       cancelled = true;
       clearTimeout(snapTimerId);
       clearInterval(saveTimer);
       clearInterval(boundsTimer);
+      window.removeEventListener('beforeunload', flushOnUnload);
+      if (saveDebounceTimerRef.current !== null) {
+        clearTimeout(saveDebounceTimerRef.current);
+        saveDebounceTimerRef.current = null;
+      }
+      flushOnUnload();
     };
   }, [persistNow]);
 
@@ -1452,6 +1483,36 @@ export const App: React.FC = () => {
     let lastHitKey = '';
     const syncHits = window.setInterval(() => {
       const phase = onboardingPhaseRef.current;
+      const pointerLocked =
+        dragStateRef.current.dragging ||
+        toyDragRef.current.dragging ||
+        cushionDragRef.current.dragging ||
+        plantDragRef.current.dragging ||
+        giftBoxDragRef.current.dragging ||
+        lanternDragRef.current.dragging;
+
+      // Idle fast-path: skip allocating Rects/Strings when stationary with no active props
+      if (
+        phase === 'done' &&
+        !pointerLocked &&
+        toysRef.current.length === 0 &&
+        !cushionRef.current.active &&
+        !plantRef.current.active &&
+        !giftBoxRef.current.active &&
+        !lanternRef.current.active &&
+        shootingStarsRef.current.length === 0 &&
+        bubblesRef.current.length === 0 &&
+        !quickWheelRef.current.active &&
+        !loveNoteRef.current.active
+      ) {
+        const cat = catRef.current;
+        const dims = getStageDimensions(saveRef.current.stage, saveRef.current.settings.spriteScale);
+        const fastKey = `0|${Math.round(cat.x - 10)},${Math.round(cat.y - 10)},${Math.round(dims.width + 20)},${Math.round(dims.height + 20)};`;
+        if (fastKey === lastHitKey) {
+          return;
+        }
+      }
+
       const rects: HitRect[] = [];
 
       if (phase === 'letterpad') {
@@ -1511,15 +1572,6 @@ export const App: React.FC = () => {
             y: plantRef.current.y - 38,
             width: 48,
             height: 42,
-          });
-        }
-
-        if (featherWandRef.current.active) {
-          rects.push({
-            x: featherWandRef.current.x - 32,
-            y: featherWandRef.current.y - 36,
-            width: 64,
-            height: 66,
           });
         }
 
@@ -1598,15 +1650,6 @@ export const App: React.FC = () => {
         }
       }
 
-      const pointerLocked =
-        dragStateRef.current.dragging ||
-        toyDragRef.current.dragging ||
-        cushionDragRef.current.dragging ||
-        plantDragRef.current.dragging ||
-        giftBoxDragRef.current.dragging ||
-        lanternDragRef.current.dragging ||
-        featherWandDragRef.current.dragging;
-
       let key = pointerLocked ? '1|' : '0|';
       for (let i = 0; i < rects.length; i++) {
         const r = rects[i];
@@ -1638,6 +1681,7 @@ export const App: React.FC = () => {
         if (!prev.active) return prev;
         if (prev.remainingSeconds <= 1) {
           kittenAudio.playFocusDone();
+          playBubbleMew(true);
           catRef.current.state = 'celebrate';
           catRef.current.stateTimer = 3.5;
           catRef.current.statusBubble = 'Focus Done!';
@@ -1661,7 +1705,7 @@ export const App: React.FC = () => {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [commitSave, focus.active]);
+  }, [commitSave, focus.active, playBubbleMew]);
 
   // Adaptive Simulation & Render Loop (scales from ~6.7 FPS idle to ~30-60 FPS interactive, skipping redundant canvas draws)
   useEffect(() => {
@@ -1682,8 +1726,7 @@ export const App: React.FC = () => {
         dragStateRef.current.dragging ||
         toyDragRef.current.dragging ||
         cushionDragRef.current.dragging ||
-        plantDragRef.current.dragging ||
-        featherWandDragRef.current.dragging
+        plantDragRef.current.dragging
       ) {
         return 16;
       }
@@ -1698,7 +1741,6 @@ export const App: React.FC = () => {
         bubblesRef.current.length > 0 ||
         shootingStarsRef.current.length > 0 ||
         toysRef.current.some((t) => !t.settled) ||
-        (featherWandRef.current.active && !featherWandRef.current.grounded) ||
         (cushionRef.current.active && !cushionRef.current.grounded) ||
         (plantRef.current.active && (!plantRef.current.grounded || plantRef.current.swayTimer > 0)) ||
         (lanternRef.current.active && !lanternRef.current.grounded) ||
@@ -1728,6 +1770,7 @@ export const App: React.FC = () => {
         cat.state === 'celebrate' ||
         cat.state === 'poked' ||
         cat.state === 'eat' ||
+        cat.state === 'stretch' ||
         cat.state === 'roll_wiggle' ||
         cat.state === 'box_hide' ||
         cat.state === 'peek' ||
@@ -1736,6 +1779,9 @@ export const App: React.FC = () => {
         loveNoteRef.current.active
       ) {
         return 55;
+      }
+      if (snapshotRef.current.isFullscreenForeground) {
+        return 300;
       }
       return 150;
     };
@@ -1843,26 +1889,11 @@ export const App: React.FC = () => {
             }
           }
 
-          // Feather Ribbon Wand physics & 10s no-interaction auto-removal
-          const wand = featherWandRef.current;
-          if (wand.active) {
-            stepFeatherWandPhysics(wand, ledges, snap.monitors, dt);
-            if (!wand.heldByCursor) {
-              wand.idleSeconds = (wand.idleSeconds ?? 0) + dt;
-              if (wand.idleSeconds >= 10) {
-                wand.active = false;
-                featherWandDragRef.current.dragging = false;
-                spawnYarnVanishParticles(particlesRef.current, wand.x, wand.y, '#c8a6f7');
-                if (hudOpenRef.current) {
-                  publishBridgeRef.current(workingSave, focusRef.current);
-                }
-              }
-            }
-          }
-
           // Random Pastel Butterfly / Night Firefly auto-spawner at 1.5x kitten height
-          butterflySpawnTimerRef.current -= dt;
-          if (butterflySpawnTimerRef.current <= 0) {
+          if (!snap.isFullscreenForeground) {
+            butterflySpawnTimerRef.current -= dt;
+          }
+          if (!snap.isFullscreenForeground && butterflySpawnTimerRef.current <= 0) {
             butterflySpawnTimerRef.current = 35 + Math.random() * 55;
             if (butterfliesRef.current.length < 2 && snap.monitors.length > 0) {
               const catDims = getStageDimensions(workingSave.stage, workingSave.settings.spriteScale);
@@ -1902,7 +1933,7 @@ export const App: React.FC = () => {
           }
 
           // Late-night shooting star spawner
-          if (workingSave.settings.lateNightEnabled && isLateNightHour()) {
+          if (workingSave.settings.lateNightEnabled && isLateNightHour() && !snap.isFullscreenForeground) {
             shootingStarTimerRef.current -= dt;
             if (shootingStarTimerRef.current <= 0) {
               shootingStarTimerRef.current = 55 + Math.random() * 65;
@@ -1974,6 +2005,7 @@ export const App: React.FC = () => {
                   new Date().getHours(),
                 );
                 catRef.current.statusBubbleTimer = 3.4;
+                playBubbleMew();
               }
             }
 
@@ -2001,6 +2033,7 @@ export const App: React.FC = () => {
                   catRef.current.statusBubble = 'Special mail! 💌';
                   catRef.current.statusBubbleTimer = 2.6;
                   kittenAudio.playBellJingle();
+                  playBubbleMew(true);
                 }
               }
             }
@@ -2036,7 +2069,6 @@ export const App: React.FC = () => {
               butterflies: butterfliesRef.current,
               bubbles: bubblesRef.current,
               cushion: cushionRef.current,
-              featherWand: featherWandRef.current,
               plant: plantRef.current,
               giftBox: giftBoxRef.current,
               lantern: lanternRef.current,
@@ -2071,17 +2103,20 @@ export const App: React.FC = () => {
 
           if (stepOut.evolvedLabel) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Grew: ${STAGE_THRESHOLDS[stepOut.evolvedLabel as keyof typeof STAGE_THRESHOLDS]?.label ?? stepOut.evolvedLabel}!`;
             catRef.current.statusBubbleTimer = 4.0;
             saveDirtyRef.current = true;
           }
           if (stepOut.achievementBanner) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Badge: ${stepOut.achievementBanner}`;
             catRef.current.statusBubbleTimer = 3.5;
             saveDirtyRef.current = true;
           } else if (stepOut.mementoBanner) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Gift: ${stepOut.mementoBanner}!`;
             catRef.current.statusBubbleTimer = 3.5;
             saveDirtyRef.current = true;
@@ -2126,9 +2161,13 @@ export const App: React.FC = () => {
               ? Math.floor(cat.animTime * 2)
               : cat.state === 'sit' || cat.state === 'idle'
                 ? `${Math.floor(cat.animTime * 3)}:${Math.floor(cat.animTime * 2) % 9 === 0 ? 1 : 0}`
-                : cat.state === 'head_bob'
-                  ? Math.floor(cat.animTime * 4.5)
-                  : Math.floor(cat.animTime * 11);
+                : cat.state === 'stretch'
+                  ? Math.floor(cat.animTime * 4)
+                  : cat.state === 'roll_wiggle'
+                    ? Math.floor(cat.animTime * 8)
+                    : cat.state === 'head_bob'
+                      ? Math.floor(cat.animTime * 4.5)
+                      : Math.floor(cat.animTime * 11);
 
           let extras = '';
           for (const t of toysRef.current) {
@@ -2146,9 +2185,6 @@ export const App: React.FC = () => {
           if (giftBoxRef.current.active) {
             extras += `gb:${Math.round(giftBoxRef.current.x)},${Math.round(giftBoxRef.current.y)};`;
           }
-          if (featherWandRef.current.active) {
-            extras += `w:${Math.round(featherWandRef.current.x)},${Math.round(featherWandRef.current.y)},${Math.floor(cat.animTime * 4)};`;
-          }
           if (loveNoteRef.current.active) {
             extras += `n:${loveNoteRef.current.opened ? 1 : 0},${Math.floor(cat.animTime * 4)};`;
           }
@@ -2159,7 +2195,7 @@ export const App: React.FC = () => {
           visualSig =
             `${phase}|${targetW}x${targetH}|${Math.round(cat.x)},${Math.round(cat.y)}|` +
             `${cat.state}|${cat.facing}|${cat.grounded ? 1 : 0}|${animBucket}|` +
-            `${cat.blushTimer > 0 ? 1 : 0}|${cat.statusBubbleTimer > 0 ? cat.statusBubble ?? '' : ''}|` +
+            `${cat.blushTimer > 0 ? 1 : 0}|${(cat.slowBlinkTimer ?? 0) > 0 ? 1 : 0}|${cat.statusBubbleTimer > 0 ? cat.statusBubble ?? '' : ''}|` +
             `${workingSave.stage}|${workingSave.coat}|${workingSave.equippedAccessory}|${workingSave.settings.spriteScale}|` +
             `${focusRef.current.active ? focusRef.current.remainingSeconds : -1}|${extras}`;
         }
@@ -2201,7 +2237,6 @@ export const App: React.FC = () => {
               butterflies: butterfliesRef.current,
               bubbles: bubblesRef.current,
               cushion: cushionRef.current,
-              featherWand: featherWandRef.current,
               plant: plantRef.current,
               giftBox: giftBoxRef.current,
               lantern: lanternRef.current,
@@ -2242,7 +2277,7 @@ export const App: React.FC = () => {
       if (raf) cancelAnimationFrame(raf);
       if (timer) clearTimeout(timer);
     };
-  }, [getPrimaryMonitor, setPhase, spawnEggChips, spawnHatchExplosion]);
+  }, [getPrimaryMonitor, playBubbleMew, setPhase, spawnEggChips, spawnHatchExplosion]);
 
   // Mouse handlers on overlay canvas (petting, dragging, middle-click HUD!)
   const toVirtualCoords = (clientX: number, clientY: number) => {
@@ -2365,27 +2400,54 @@ export const App: React.FC = () => {
           ? { x: mon.workX, y: mon.workY, width: mon.workWidth, height: mon.workHeight }
           : { x: 0, y: 0, width: snap.virtualWidth, height: snap.virtualHeight };
         const clicked = getQuickWheelLayout(qw, bounds).find((b) => isPointInRect(vx, vy, b));
+        const centerRect = getQuickWheelCenterRect(qw, bounds);
+        const clickedCenter =
+          !clicked &&
+          centerRect !== null &&
+          Math.hypot(vx - centerRect.cx, vy - centerRect.cy) <= centerRect.radius;
         qw.active = false;
         qw.hoveredId = null;
+        qw.hoveredCenter = false;
+        if (clickedCenter) {
+          const cat = catRef.current;
+          const cDims = getStageDimensions(saveRef.current.stage, saveRef.current.settings.spriteScale);
+          cat.state = 'petted';
+          cat.stateTimer = 1.6;
+          cat.vx = 0;
+          cat.blushTimer = 2.0;
+          cat.statusBubble = 'Purrr~ ♥';
+          cat.statusBubbleTimer = 1.4;
+          commitSave((d) => {
+            d.stats.petsReceived += 1;
+            d.bond = Math.min(100, d.bond + 3);
+            applyXpAndEvaluate(d, 8);
+          }, false);
+          kittenAudio.playPurr('happy');
+          kittenAudio.playMew();
+          particlesRef.current.push({
+            id: `qw-pet-${Date.now()}`,
+            kind: 'heart',
+            x: cat.x + cDims.width / 2,
+            y: cat.y - 4,
+            vx: 0,
+            vy: -24,
+            alpha: 1,
+            life: 0,
+            maxLife: 1.0,
+          });
+          wakeLoopRef.current?.();
+          return;
+        }
         if (clicked) {
           switch (clicked.id) {
             case 'treat':
               tossToy('ube_icecream');
-              break;
-            case 'laser':
-              toggleLaser();
-              break;
-            case 'brush':
-              toggleBrush();
               break;
             case 'trick':
               doTrick();
               break;
             case 'bubbles':
               spawnBubbles();
-              break;
-            case 'box':
-              toggleGiftBox();
               break;
             case 'snap':
               snapPolaroidMemory();
@@ -2408,10 +2470,12 @@ export const App: React.FC = () => {
           );
           if (wishRes.achievementBanner) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Badge: ${wishRes.achievementBanner}`;
             catRef.current.statusBubbleTimer = 3.5;
           } else if (wishRes.mementoBanner) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Gift: ${wishRes.mementoBanner}!`;
             catRef.current.statusBubbleTimer = 3.5;
           }
@@ -2432,10 +2496,12 @@ export const App: React.FC = () => {
           );
           if (popRes.achievementBanner) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Badge: ${popRes.achievementBanner}`;
             catRef.current.statusBubbleTimer = 3.5;
           } else if (popRes.mementoBanner) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Gift: ${popRes.mementoBanner}!`;
             catRef.current.statusBubbleTimer = 3.5;
           }
@@ -2462,10 +2528,12 @@ export const App: React.FC = () => {
           );
           if (ambushRes.achievementBanner) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Badge: ${ambushRes.achievementBanner}`;
             catRef.current.statusBubbleTimer = 3.5;
           } else if (ambushRes.mementoBanner) {
             kittenAudio.playUnlock();
+            playBubbleMew(true);
             catRef.current.statusBubble = `Gift: ${ambushRes.mementoBanner}!`;
             catRef.current.statusBubbleTimer = 3.5;
           }
@@ -2603,30 +2671,6 @@ export const App: React.FC = () => {
       }
 
       if (
-        featherWandRef.current.active &&
-        vx >= featherWandRef.current.x - 32 &&
-        vx <= featherWandRef.current.x + 32 &&
-        vy >= featherWandRef.current.y - 36 &&
-        vy <= featherWandRef.current.y + 30
-      ) {
-        const wand = featherWandRef.current;
-        wand.heldByCursor = true;
-        wand.grounded = false;
-        wand.idleSeconds = 0;
-        wand.vx = 0;
-        wand.vy = 0;
-        featherWandDragRef.current = {
-          dragging: true,
-          lastX: vx,
-          lastY: vy,
-          vx: 0,
-          vy: 0,
-        };
-        kittenAudio.playBellJingle();
-        return;
-      }
-
-      if (
         cushionRef.current.active &&
         Math.abs(vx - cushionRef.current.x) <= 42 &&
         vy >= cushionRef.current.y - 28 &&
@@ -2721,7 +2765,12 @@ export const App: React.FC = () => {
         ? { x: mon.workX, y: mon.workY, width: mon.workWidth, height: mon.workHeight }
         : { x: 0, y: 0, width: snap.virtualWidth, height: snap.virtualHeight };
       const hovered = getQuickWheelLayout(qw, bounds).find((b) => isPointInRect(vx, vy, b));
+      const centerRect = getQuickWheelCenterRect(qw, bounds);
       qw.hoveredId = hovered ? hovered.id : null;
+      qw.hoveredCenter =
+        !hovered &&
+        centerRect !== null &&
+        Math.hypot(vx - centerRect.cx, vy - centerRect.cy) <= centerRect.radius;
     }
 
     if (giftBoxDragRef.current.dragging) {
@@ -2733,28 +2782,6 @@ export const App: React.FC = () => {
       giftBoxRef.current.y = vy - giftBoxDragRef.current.offsetY;
       giftBoxRef.current.vy = 0;
       giftBoxRef.current.grounded = false;
-      return;
-    }
-
-    if (featherWandDragRef.current.dragging) {
-      const wand = featherWandRef.current;
-      if (wand.active && wand.heldByCursor) {
-        featherWandDragRef.current.vx = Math.max(
-          -900,
-          Math.min(900, (vx - featherWandDragRef.current.lastX) * 45),
-        );
-        featherWandDragRef.current.vy = Math.max(
-          -900,
-          Math.min(900, (vy - featherWandDragRef.current.lastY) * 45),
-        );
-        featherWandDragRef.current.lastX = vx;
-        featherWandDragRef.current.lastY = vy;
-        wand.x = vx;
-        wand.y = vy + 24;
-        wand.idleSeconds = 0;
-      } else {
-        featherWandDragRef.current.dragging = false;
-      }
       return;
     }
 
@@ -2882,16 +2909,6 @@ export const App: React.FC = () => {
   };
 
   const handleCanvasMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (e.button === 0 && featherWandDragRef.current.dragging) {
-      const wand = featherWandRef.current;
-      wand.heldByCursor = false;
-      wand.vx = featherWandDragRef.current.vx * 0.65;
-      wand.vy = featherWandDragRef.current.vy * 0.65;
-      wand.idleSeconds = 0;
-      featherWandDragRef.current.dragging = false;
-      return;
-    }
-
     if (e.button === 0 && cushionDragRef.current.dragging) {
       cushionDragRef.current.dragging = false;
       cushionRef.current.vx = cushionDragRef.current.vx * 0.6;
@@ -2914,6 +2931,7 @@ export const App: React.FC = () => {
         lanternRef.current.vx = 0;
         lanternRef.current.vy = 0;
         kittenAudio.playLanternClick(lanternRef.current.lit);
+        playBubbleMew();
         catRef.current.statusBubble = lanternRef.current.lit ? 'Lantern lit! 🏮' : 'Lantern dimmed 🌙';
         catRef.current.statusBubbleTimer = 1.6;
       } else {
@@ -3037,25 +3055,6 @@ export const App: React.FC = () => {
             toggleLantern();
             return;
           }
-          if (
-            featherWandRef.current.active &&
-            vx >= featherWandRef.current.x - 32 &&
-            vx <= featherWandRef.current.x + 32 &&
-            vy >= featherWandRef.current.y - 36 &&
-            vy <= featherWandRef.current.y + 30
-          ) {
-            e.preventDefault();
-            featherWandRef.current.active = false;
-            featherWandDragRef.current.dragging = false;
-            spawnYarnVanishParticles(
-              particlesRef.current,
-              featherWandRef.current.x,
-              featherWandRef.current.y,
-              '#c8a6f7',
-            );
-            publishBridgeState(saveRef.current, focusRef.current);
-            return;
-          }
           if (teaseYarnActiveRef.current) {
             e.preventDefault();
             toggleTeaseYarn();
@@ -3085,12 +3084,14 @@ export const App: React.FC = () => {
             if (quickWheelRef.current.active) {
               quickWheelRef.current.active = false;
               quickWheelRef.current.hoveredId = null;
+              quickWheelRef.current.hoveredCenter = false;
             } else {
               quickWheelRef.current = {
                 active: true,
                 x: cat.x + cDims.width / 2,
                 y: cat.y + cDims.height / 2,
                 hoveredId: null,
+                hoveredCenter: false,
               };
             }
             wakeLoopRef.current?.();
@@ -3100,6 +3101,7 @@ export const App: React.FC = () => {
             e.preventDefault();
             quickWheelRef.current.active = false;
             quickWheelRef.current.hoveredId = null;
+            quickWheelRef.current.hoveredCenter = false;
           }
         }}
       />

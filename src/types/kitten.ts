@@ -31,6 +31,7 @@ export interface DesktopSnapshot {
   cursorY: number;
   idleMs: number;
   isAudioPlaying?: boolean;
+  isFullscreenForeground?: boolean;
   monitors: MonitorRect[];
   windows: WindowPlatform[];
 }
@@ -220,6 +221,11 @@ export interface MementoDef {
   target: number;
 }
 
+export interface DailyStampsRecord {
+  dateKey: string;
+  stamps: string[];
+}
+
 export interface KittenSaveState {
   version: number;
   onboardingCompleted?: boolean;
@@ -240,6 +246,7 @@ export interface KittenSaveState {
   mementos?: string[];
   starJarCount?: number;
   savedNotes?: SavedLoveNote[];
+  dailyStamps?: DailyStampsRecord;
   settings: KittenSettings;
 }
 
@@ -301,6 +308,7 @@ export interface ButterflyEntity {
   life: number;
   maxLife: number;
   booped?: boolean;
+  ignored?: boolean;
 }
 
 export interface CushionEntity {
@@ -372,11 +380,8 @@ export interface ShootingStarEntity {
 
 export type QuickWheelActionId =
   | 'treat'
-  | 'laser'
-  | 'brush'
   | 'trick'
   | 'bubbles'
-  | 'box'
   | 'snap'
   | 'hud';
 
@@ -385,17 +390,7 @@ export interface QuickWheelState {
   x: number;
   y: number;
   hoveredId?: QuickWheelActionId | null;
-}
-
-export interface FeatherWandState {
-  active: boolean;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  grounded?: boolean;
-  heldByCursor?: boolean;
-  idleSeconds?: number;
+  hoveredCenter?: boolean;
 }
 
 export interface LoveNoteEntity {
@@ -449,4 +444,6 @@ export interface CatRuntime {
   ignoreLedgeUntilY: number;
   meowCooldown: number;
   cuddledYarnColor: string | null;
+  slowBlinkTimer?: number;
+  idleHoverTime?: number;
 }

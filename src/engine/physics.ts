@@ -3,7 +3,6 @@ import {
   ButterflyEntity,
   CushionEntity,
   DesktopSnapshot,
-  FeatherWandState,
   GiftBoxEntity,
   LanternEntity,
   LavenderPlantEntity,
@@ -566,71 +565,6 @@ export function stepBubbles(
       } else if (b.y > maxY) {
         b.y = maxY;
         b.vy = -Math.abs(b.vy) - 18;
-      }
-    }
-  }
-}
-
-export function stepFeatherWandPhysics(
-  wand: FeatherWandState,
-  ledges: WalkableLedge[],
-  monitors: MonitorRect[],
-  dt: number,
-): void {
-  if (!wand.active || wand.heldByCursor) return;
-
-  if (wand.grounded && Math.abs(wand.vx) < 2) {
-    const under = findLandingLedge(ledges, wand.x, wand.y + 8, wand.y + 22);
-    const groundY = getGroundYAt(monitors, wand.x, wand.y);
-    if (under) {
-      wand.y = under.y - 14;
-      return;
-    }
-    if (Math.abs(wand.y + 14 - groundY) <= 6) {
-      wand.y = groundY - 14;
-      return;
-    }
-    wand.grounded = false;
-  }
-
-  const prevBottom = wand.y + 14;
-  wand.x = clampXToVirtualDesktop(monitors, wand.x + wand.vx * dt - 18, 36) + 18;
-  wand.vy += GRAVITY * dt;
-  wand.y += wand.vy * dt;
-  const nextBottom = wand.y + 14;
-
-  const mon = findMonitorForPoint(monitors, wand.x, wand.y) ?? monitors[0];
-  if (mon) {
-    if (wand.x <= mon.workX + 20 && wand.vx < 0) wand.vx = Math.abs(wand.vx) * 0.6;
-    if (wand.x >= mon.workX + mon.workWidth - 20 && wand.vx > 0) wand.vx = -Math.abs(wand.vx) * 0.6;
-  }
-
-  const hit = findLandingLedge(ledges, wand.x, prevBottom, nextBottom);
-  const groundY = getGroundYAt(monitors, wand.x, wand.y);
-  if (hit && wand.vy >= 0) {
-    wand.y = hit.y - 14;
-    if (Math.abs(wand.vy) > 130) {
-      wand.vy = -Math.abs(wand.vy) * 0.42;
-      wand.vx *= 0.8;
-    } else {
-      wand.vy = 0;
-      wand.vx *= 0.8;
-      if (Math.abs(wand.vx) < 8) {
-        wand.vx = 0;
-        wand.grounded = true;
-      }
-    }
-  } else if (nextBottom >= groundY) {
-    wand.y = groundY - 14;
-    if (Math.abs(wand.vy) > 130) {
-      wand.vy = -Math.abs(wand.vy) * 0.42;
-      wand.vx *= 0.8;
-    } else {
-      wand.vy = 0;
-      wand.vx *= 0.8;
-      if (Math.abs(wand.vx) < 8) {
-        wand.vx = 0;
-        wand.grounded = true;
       }
     }
   }

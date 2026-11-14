@@ -3,7 +3,6 @@ import {
   ButterflyEntity,
   CatRuntime,
   CushionEntity,
-  FeatherWandState,
   FocusState,
   GiftBoxEntity,
   KittenSaveState,
@@ -25,7 +24,6 @@ import {
 } from './onboardingSprites';
 import {
   drawFakeCursorProp,
-  drawFeatherWand,
   drawGiftBox,
   drawLavenderCushion,
   drawLavenderPlant,
@@ -50,6 +48,80 @@ export interface OnboardingRenderState {
   primaryMonitor?: MonitorRect;
 }
 
+interface DirtyRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const prevDirtyByCtx = new WeakMap<
+  CanvasRenderingContext2D,
+  { width: number; height: number; rects: DirtyRect[] }
+>();
+
+function computeActiveDirtyRects(
+  params: {
+    width: number;
+    height: number;
+    scaleX: number;
+    scaleY: number;
+    cat: CatRuntime;
+    dims: { width: number; height: number };
+    toys: ToyEntity[];
+    butterflies: ButterflyEntity[];
+    bubbles: BubbleEntity[];
+    cushion?: CushionEntity;
+    plant?: LavenderPlantEntity;
+    giftBox?: GiftBoxEntity;
+    lantern?: LanternEntity;
+    shootingStars: ShootingStarEntity[];
+    loveNote?: LoveNoteEntity;
+    particles: Particle[];
+    focus: FocusState;
+  },
+): DirtyRect[] {
+  const { width, height, scaleX, scaleY, cat, dims } = params;
+  const rects: DirtyRect[] = [];
+  const pushLogical = (lx: number, ly: number, lw: number, lh: number) => {
+    const px = Math.max(0, Math.floor(lx * scaleX) - 4);
+    const py = Math.max(0, Math.floor(ly * scaleY) - 4);
+    const pw = Math.min(width - px, Math.ceil(lw * scaleX) + 8);
+    const ph = Math.min(height - py, Math.ceil(lh * scaleY) + 8);
+    if (pw > 0 && ph > 0) rects.push({ x: px, y: py, w: pw, h: ph });
+  };
+
+  // Generous box covering kitten, tall hats/wings, hold cursor prop, focus ring, and wide speech bubble
+  const catPadX = params.focus.active || (cat.statusBubble && cat.statusBubbleTimer > 0) ? 140 : 64;
+  const catPadTop = 90;
+  pushLogical(cat.x - catPadX, cat.y - catPadTop, dims.width + catPadX * 2, dims.height + catPadTop + 28);
+
+  for (const t of params.toys) {
+    const r = t.radius + 20;
+    pushLogical(t.x - r, t.y - r, r * 2, r * 2);
+  }
+  for (const b of params.butterflies) {
+    pushLogical(b.x - 24, b.y - 24, 48, 48);
+  }
+  for (const b of params.bubbles) {
+    const r = b.radius + 10;
+    pushLogical(b.x - r, b.y - r, r * 2, r * 2);
+  }
+  for (const s of params.shootingStars) {
+    pushLogical(s.x - 84, s.y - 84, 168, 168);
+  }
+  if (params.cushion?.active) pushLogical(params.cushion.x - 48, params.cushion.y - 32, 96, 40);
+  if (params.plant?.active) pushLogical(params.plant.x - 28, params.plant.y - 44, 56, 50);
+  if (params.giftBox?.active) pushLogical(params.giftBox.x - 32, params.giftBox.y - 42, 64, 50);
+  if (params.lantern?.active) pushLogical(params.lantern.x - 80, params.lantern.y - 96, 160, 120);
+  if (params.loveNote?.active) pushLogical(params.loveNote.x - 125, params.loveNote.y - 115, 250, 130);
+  for (const p of params.particles) {
+    const r = (p.size ?? 14) + 18;
+    pushLogical(p.x - r, p.y - r, r * 2, r * 2);
+  }
+  return rects;
+}
+
 export function stepAndDrawOverlay(params: {
   ctx: CanvasRenderingContext2D;
   width: number;
@@ -63,7 +135,6 @@ export function stepAndDrawOverlay(params: {
   butterflies?: ButterflyEntity[];
   bubbles?: BubbleEntity[];
   cushion?: CushionEntity;
-  featherWand?: FeatherWandState;
   plant?: LavenderPlantEntity;
   giftBox?: GiftBoxEntity;
   lantern?: LanternEntity;
@@ -93,7 +164,6 @@ export function stepAndDrawOverlay(params: {
     butterflies = [],
     bubbles = [],
     cushion,
-    featherWand,
     plant,
     giftBox,
     lantern,
@@ -109,18 +179,70 @@ export function stepAndDrawOverlay(params: {
     cursorY,
     onboarding,
   } = params;
-  ctx.clearRect(0, 0, width, height);
+  const phase = onboarding?.phase ?? 'done';
+  const dims = getStageDimensions(save.stage, save.settings.spriteScale);
+  const canDirtyClear =
+    phase === 'done' &&
+    !laserActive &&
+    !brushActive &&
+    !quickWheel?.active &&
+    !toys.some((t) => t.heldBy === 'tease');
+
+  const prevDirty = prevDirtyByCtx.get(ctx);
+  const currRects = canDirtyClear
+    ? computeActiveDirtyRects({
+        width,
+        height,
+        scaleX,
+        scaleY,
+        cat,
+        dims,
+        toys,
+        butterflies,
+        bubbles,
+        cushion,
+        plant,
+        giftBox,
+        lantern,
+        shootingStars,
+        loveNote,
+        particles,
+        focus,
+      })
+    : null;
+
+  if (
+    currRects &&
+    prevDirty &&
+    prevDirty.width === width &&
+    prevDirty.height === height &&
+    prevDirty.rects.length <= 48 &&
+    currRects.length <= 48
+  ) {
+    for (const r of prevDirty.rects) {
+      ctx.clearRect(r.x, r.y, r.w, r.h);
+    }
+    for (const r of currRects) {
+      ctx.clearRect(r.x, r.y, r.w, r.h);
+    }
+    prevDirtyByCtx.set(ctx, { width, height, rects: currRects });
+  } else {
+    ctx.clearRect(0, 0, width, height);
+    if (currRects && currRects.length <= 48) {
+      prevDirtyByCtx.set(ctx, { width, height, rects: currRects });
+    } else {
+      prevDirtyByCtx.delete(ctx);
+    }
+  }
+
   ctx.save();
   ctx.scale(scaleX, scaleY);
   ctx.imageSmoothingEnabled = false;
 
-  const phase = onboarding?.phase ?? 'done';
   if (phase === 'loading') {
     ctx.restore();
     return;
   }
-
-  const dims = getStageDimensions(save.stage, save.settings.spriteScale);
 
   // Render active onboarding prop before foreground particles
   if (phase === 'letterpad') {
@@ -213,11 +335,6 @@ export function stepAndDrawOverlay(params: {
     drawPixelButterfly(ctx, b);
   }
 
-  // Render active Feather Ribbon Wand
-  if (featherWand?.active) {
-    drawFeatherWand(ctx, featherWand, cursorX, cursorY, cat.animTime);
-  }
-
   // Render Violet Laser Dot or Star Brush at cursor
   if (laserActive && typeof cursorX === 'number' && typeof cursorY === 'number') {
     drawVioletLaserDot(ctx, cursorX, cursorY, cat.animTime);
@@ -272,6 +389,7 @@ export function stepAndDrawOverlay(params: {
       animTime: cat.animTime,
       pixelScale: save.settings.spriteScale,
       blush: cat.blushTimer > 0,
+      slowBlink: (cat.slowBlinkTimer ?? 0) > 0,
       pokeStreak: cat.pokeStreak,
       cuddledYarnColor: cat.cuddledYarnColor,
     });
@@ -303,11 +421,6 @@ export function stepAndDrawOverlay(params: {
         y: 0,
         width: width / Math.max(0.1, scaleX),
         height: height / Math.max(0.1, scaleY),
-      },
-      {
-        laserActive,
-        brushActive,
-        giftBoxActive: Boolean(giftBox?.active),
       },
     );
   }

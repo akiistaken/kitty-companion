@@ -561,13 +561,13 @@ test('startup greeting addresses default Jane and custom configured names', () =
   ai.triggerGreeting(cat, save, particles);
 
   assert.equal(cat.state, 'celebrate');
-  assert.equal(cat.statusBubble, 'Hi Jane! ♥');
+  assert.equal(cat.statusBubble, 'Meow Jane!');
   assert.ok(cat.statusBubbleTimer > 0);
   assert.ok(particles.some((p) => p.kind === 'heart'));
 
   save.settings.userName = 'Akii';
   ai.triggerGreeting(cat, save, particles);
-  assert.equal(cat.statusBubble, 'Hi Akii! ♥');
+  assert.equal(cat.statusBubble, 'Meow Akii!');
 });
 
 test('first-boot save state defaults onboardingCompleted to false and positions onboarding inside primary work area', () => {
@@ -603,7 +603,7 @@ test('first-boot save state defaults onboardingCompleted to false and positions 
   assert.ok(eggLayout.hitRect.width > 180 && eggLayout.hitRect.height > 180);
 });
 
-test('Phase B: butterfly booping, cushion landing, and feather wand reach work in engine', () => {
+test('Phase B: butterfly booping, sleep ignore, cushion landing, and quiet study buddy work in engine', () => {
   const snap = {
     virtualX: 0,
     virtualY: 0,
@@ -666,15 +666,49 @@ test('Phase B: butterfly booping, cushion landing, and feather wand reach work i
   assert.equal(save.stats.butterfliesCaught, 1);
   assert.equal(cat.state, 'celebrate');
 
-  const wand = { active: true, x: 520, y: 900, vx: 60, vy: -120, grounded: false, heldByCursor: false, idleSeconds: 0 };
-  for (let i = 0; i < 80; i++) {
-    physics.stepFeatherWandPhysics(wand, ledges, snap.monitors, 1 / 60);
-  }
-  assert.equal(wand.grounded, true);
+  // Actively sleeping kitten ignores butterflies marked as ignored and stays asleep
+  cat.state = 'sleep';
+  cat.stateTimer = 5;
+  cat.statusBubble = null;
+  cat.statusBubbleTimer = 0;
+  const ignoredButterfly = [
+    {
+      id: 'b-sleep-ignore',
+      kind: 'firefly',
+      x: 425,
+      y: 1032 - 50,
+      vx: 40,
+      vy: 0,
+      phase: 0,
+      color: '#fde68a',
+      life: 0,
+      maxLife: 20,
+      ignored: true,
+    },
+  ];
+  ai.stepCatAI({
+    dt: 1 / 60,
+    cat,
+    save,
+    snapshot: snap,
+    ledges,
+    toys: [],
+    particles,
+    focus,
+    isBusyUser: false,
+    isDraggingCat: false,
+    butterflies: ignoredButterfly,
+  });
+  assert.equal(cat.state, 'sleep');
+  assert.equal(ignoredButterfly[0].booped, undefined);
 
+  // Study buddy mode stays quiet without setting a 'Study buddy' text bubble
   cat.state = 'idle';
+  cat.stateTimer = 0.01;
+  cat.statusBubble = null;
+  cat.statusBubbleTimer = 0;
   ai.stepCatAI({
-    dt: 1 / 60,
+    dt: 0.05,
     cat,
     save,
     snapshot: snap,
@@ -682,27 +716,10 @@ test('Phase B: butterfly booping, cushion landing, and feather wand reach work i
     toys: [],
     particles,
     focus,
-    isBusyUser: false,
+    isBusyUser: true,
     isDraggingCat: false,
-    featherWand: { active: true, x: 430, y: 890, vx: 0, vy: 0, heldByCursor: true },
   });
-  assert.equal(cat.state, 'reach_yarn');
-
-  ai.stepCatAI({
-    dt: 1 / 60,
-    cat,
-    save,
-    snapshot: snap,
-    ledges,
-    toys: [],
-    particles,
-    focus,
-    isBusyUser: false,
-    isDraggingCat: false,
-    featherWand: { active: true, x: 430, y: 960, vx: 0, vy: 0, heldByCursor: true },
-  });
-  assert.equal(cat.state, 'celebrate');
-  assert.equal(save.stats.yarnCatches, 1);
+  assert.equal(cat.statusBubble, null);
 });
 
 test('Phase C: Polaroid memories cap at 12 and care whispers / Akii love notes personalize', () => {
@@ -1012,15 +1029,19 @@ test('Purple Gift Box physics, box ambush progression, and Quick Wheel bounds', 
   };
   const mon = snap.monitors[0];
   const bounds = { x: mon.workX, y: mon.workY, width: mon.workWidth, height: mon.workHeight };
-  const buttons = sprites.getQuickWheelLayout(wheel, bounds, { laserActive: true });
-  assert.equal(buttons.length, 8);
+  const buttons = sprites.getQuickWheelLayout(wheel, bounds);
+  assert.equal(buttons.length, 5);
+  assert.deepEqual(
+    buttons.map((b) => b.id),
+    ['treat', 'trick', 'bubbles', 'snap', 'hud'],
+  );
   for (const btn of buttons) {
+    assert.ok(btn.width > 64 && btn.height > 28);
     assert.ok(btn.x >= bounds.x);
     assert.ok(btn.y >= bounds.y);
     assert.ok(btn.x + btn.width <= bounds.x + bounds.width);
     assert.ok(btn.y + btn.height <= bounds.y + bounds.height);
   }
-  assert.equal(buttons.find((b) => b.id === 'laser')?.active, true);
 });
 
 test('Moonlight Lantern physics, shooting star wishes, and Star Jar wish unlocks', () => {
@@ -1075,4 +1096,126 @@ test('Moonlight Lantern physics, shooting star wishes, and Star Jar wish unlocks
   assert.equal(save.stats.wishesMade, 3);
   assert.ok(save.achievements.stargazer);
   assert.ok(save.unlockedAccessories.includes('crescent_crown'));
+});
+
+test('Stretch & Roll animations draw multi-frame poses and record daily stamps', () => {
+  const save = progression.createInitialSaveState('lavender', 'Luna', true);
+  save.settings.soundEnabled = false;
+  const snap = physics.createBrowserFallbackSnapshot();
+  const ledges = physics.buildWalkableLedges(snap);
+  const cat = makeCat(300, 620);
+  const particles = [];
+
+  ai.kittenAudio.resetCooldowns();
+  ai.triggerCatStretch(cat, save, particles);
+  assert.equal(cat.state, 'stretch');
+  assert.ok(progression.getTodayDailyStamps(save).includes('first_stretch'));
+
+  ai.kittenAudio.resetCooldowns();
+  ai.triggerCatRoll(cat, save, particles);
+  assert.equal(cat.state, 'roll_wiggle');
+  assert.ok(progression.getTodayDailyStamps(save).includes('belly_roll'));
+
+  // Stepping AI while muted emits visual ♪ cues into particles
+  ai.stepCatAI({
+    dt: 0.05,
+    cat,
+    save,
+    snapshot: snap,
+    ledges,
+    toys: [],
+    particles,
+    focus: { active: false, totalSeconds: 1500, remainingSeconds: 1500, startedAt: 0 },
+    isBusyUser: false,
+    isDraggingCat: false,
+  });
+  assert.ok(particles.some((p) => p.kind === 'note' && (p.glyph === '♪' || p.glyph === '～♪')));
+
+  // Recording the same daily stamp twice returns false, but resets cleanly on date change
+  assert.equal(progression.recordDailyStamp(save, 'belly_roll'), false);
+  save.dailyStamps = { dateKey: '1999-01-01', stamps: ['old_stamp'] };
+  assert.equal(progression.getTodayDailyStamps(save).length, 0);
+  assert.equal(progression.recordDailyStamp(save, 'slow_blink'), true);
+  assert.deepEqual(progression.getTodayDailyStamps(save), ['slow_blink']);
+
+  // drawPixelCat renders distinct pixel rectangles across multi-phase stretch & roll_wiggle frames
+  const recordDraw = (state, animTime) => {
+    const rects = [];
+    const mockCtx = {
+      fillStyle: '#000',
+      imageSmoothingEnabled: true,
+      save() {},
+      restore() {},
+      translate() {},
+      scale() {},
+      rotate() {},
+      fillRect(x, y, w, h) {
+        rects.push(`${x},${y},${w},${h},${this.fillStyle}`);
+      },
+    };
+    sprites.drawPixelCat(mockCtx, {
+      x: 100,
+      y: 200,
+      facing: 1,
+      stage: 'junior_kitten',
+      coat: 'lavender',
+      accessory: 'none',
+      state,
+      animTime,
+      pixelScale: 6,
+    });
+    return rects.join('|');
+  };
+
+  const stretch0 = recordDraw('stretch', 0.0);
+  const stretch2 = recordDraw('stretch', 0.6);
+  const stretch4 = recordDraw('stretch', 1.1);
+  assert.notEqual(stretch0, stretch2);
+  assert.notEqual(stretch2, stretch4);
+
+  const roll0 = recordDraw('roll_wiggle', 0.0);
+  const roll1 = recordDraw('roll_wiggle', 0.15);
+  const roll2 = recordDraw('roll_wiggle', 0.3);
+  assert.notEqual(roll0, roll1);
+  assert.notEqual(roll1, roll2);
+
+  // Quick-wheel center hub geometry sits cleanly inside wheel bounds
+  const mon = snap.monitors[0];
+  const bounds = { x: mon.workX, y: mon.workY, width: mon.workWidth, height: mon.workHeight };
+  const centerRect = sprites.getQuickWheelCenterRect({ active: true, x: 400, y: 400 }, bounds);
+  assert.ok(centerRect);
+  assert.equal(centerRect.cx, 400);
+  assert.equal(centerRect.cy, 400);
+  assert.equal(centerRect.radius, 24);
+});
+
+test('Slow-blink affection triggers when hovering near an idle grounded kitten', () => {
+  const save = progression.createInitialSaveState('lavender', 'Luna', true);
+  const snap = physics.createBrowserFallbackSnapshot();
+  const ledges = physics.buildWalkableLedges(snap);
+  const cat = makeCat(300, 620);
+  cat.state = 'sit';
+  cat.stateTimer = 4.0;
+  snap.cursorX = cat.x + 20;
+  snap.cursorY = cat.y + 20;
+  const particles = [];
+
+  for (let i = 0; i < 14; i++) {
+    ai.stepCatAI({
+      dt: 0.1,
+      cat,
+      save,
+      snapshot: snap,
+      ledges,
+      toys: [],
+      particles,
+      focus: { active: false, totalSeconds: 1500, remainingSeconds: 1500, startedAt: 0 },
+      isBusyUser: false,
+      isDraggingCat: false,
+    });
+  }
+
+  assert.ok((cat.slowBlinkTimer ?? 0) > 0);
+  assert.ok(progression.getTodayDailyStamps(save).includes('slow_blink'));
+  assert.ok(particles.some((p) => p.kind === 'heart'));
 });

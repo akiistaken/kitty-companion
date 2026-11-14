@@ -7,7 +7,6 @@ import {
   Code2,
   Cookie,
   Eraser,
-  Feather,
   Fish,
   Flower2,
   Gamepad2,
@@ -31,7 +30,9 @@ import {
 import {
   ACCESSORY_META,
   ACHIEVEMENTS,
+  DAILY_STAMP_DEFS,
   getAchievementProgress,
+  getTodayDailyStamps,
   MEMENTO_DEFS,
   STAGE_THRESHOLDS,
 } from '../engine/progression';
@@ -52,7 +53,6 @@ interface HudDrawerProps {
   save: KittenSaveState;
   focus: FocusState;
   teaseYarnActive?: boolean;
-  featherWandActive?: boolean;
   cushionActive?: boolean;
   laserActive?: boolean;
   plantActive?: boolean;
@@ -69,7 +69,6 @@ interface HudDrawerProps {
   onTossToy: (kind: ToyKind) => void;
   onPokeKitten?: () => void;
   onToggleTeaseYarn?: () => void;
-  onToggleFeatherWand?: () => void;
   onToggleCushion?: () => void;
   onToggleLaser?: () => void;
   onTogglePlant?: () => void;
@@ -80,6 +79,8 @@ interface HudDrawerProps {
   onMakeJarWish?: () => void;
   onSpawnBubbles?: () => void;
   onDoTrick?: () => void;
+  onDoStretch?: () => void;
+  onDoRoll?: () => void;
   onClearYarn?: () => void;
   onToggleFocus: () => void;
   onSnapMemory?: () => void;
@@ -123,7 +124,6 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
   save,
   focus,
   teaseYarnActive = false,
-  featherWandActive = false,
   cushionActive = false,
   laserActive = false,
   plantActive = false,
@@ -140,7 +140,6 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
   onTossToy,
   onPokeKitten,
   onToggleTeaseYarn,
-  onToggleFeatherWand,
   onToggleCushion,
   onToggleLaser,
   onTogglePlant,
@@ -151,6 +150,8 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
   onMakeJarWish,
   onSpawnBubbles,
   onDoTrick,
+  onDoStretch,
+  onDoRoll,
   onClearYarn,
   onToggleFocus,
   onSnapMemory,
@@ -479,6 +480,40 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
               )}
             </div>
 
+            <div className="polaroid-section">
+              <div className="polaroid-header">
+                <span className="section-label">
+                  Today&apos;s Moments ({getTodayDailyStamps(save).length}/{DAILY_STAMP_DEFS.length})
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {DAILY_STAMP_DEFS.map((stamp) => {
+                  const stamped = getTodayDailyStamps(save).includes(stamp.id);
+                  return (
+                    <span
+                      key={stamp.id}
+                      title={`${stamp.title}: ${stamp.description}`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '3px 7px',
+                        fontSize: '10px',
+                        border: '1px solid',
+                        borderColor: stamped ? 'var(--accent, #9d74db)' : 'rgba(157,116,219,0.28)',
+                        background: stamped ? 'rgba(157,116,219,0.18)' : 'transparent',
+                        opacity: stamped ? 1 : 0.48,
+                        borderRadius: '4px',
+                      }}
+                    >
+                      <span>{stamp.icon}</span>
+                      <span>{stamp.title}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
             {save.timeline.map((entry) => (
               <div key={entry.id} className="timeline-item">
                 <span className={`timeline-dot timeline-dot--${entry.kind}`} />
@@ -733,15 +768,6 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
               </button>
               <button
                 type="button"
-                className={`pixel-btn ${featherWandActive ? 'pixel-btn--primary' : ''}`}
-                onClick={() => onToggleFeatherWand?.()}
-                title="Spawn a feather ribbon wand (drag with cursor to play; auto-removes after 10s idle)"
-              >
-                <Feather size={14} />
-                <span>Feather Wand</span>
-              </button>
-              <button
-                type="button"
                 className={`pixel-btn ${cushionActive ? 'pixel-btn--primary' : ''}`}
                 onClick={() => onToggleCushion?.()}
                 title="Spawn or remove a cozy lavender cushion on your desktop"
@@ -775,6 +801,24 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
               >
                 <Star size={14} />
                 <span>Do a Trick</span>
+              </button>
+              <button
+                type="button"
+                className="pixel-btn"
+                onClick={() => onDoStretch?.()}
+                title="Watch your kitten do a big nose-to-tail morning stretch!"
+              >
+                <Sparkles size={14} />
+                <span>Big Stretch</span>
+              </button>
+              <button
+                type="button"
+                className="pixel-btn"
+                onClick={() => onDoRoll?.()}
+                title="Roll around kicking pink toe beans!"
+              >
+                <Heart size={14} />
+                <span>Belly Roll</span>
               </button>
               <button
                 type="button"
@@ -1080,33 +1124,6 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
                   onUpdateSettings({ spriteScale: parseInt(e.target.value, 10) })
                 }
               />
-            </div>
-
-            <div className="setting-card">
-              <div className="section-label">Growth Pace</div>
-              <div className="seg-group seg-group--3">
-                <button
-                  type="button"
-                  className={`seg-btn ${(save.settings.growthPace ?? 'very_slow') === 'very_slow' ? 'seg-btn--active' : ''}`}
-                  onClick={() => onUpdateSettings({ growthPace: 'very_slow' })}
-                >
-                  Very Slow
-                </button>
-                <button
-                  type="button"
-                  className={`seg-btn ${save.settings.growthPace === 'normal' ? 'seg-btn--active' : ''}`}
-                  onClick={() => onUpdateSettings({ growthPace: 'normal' })}
-                >
-                  Normal
-                </button>
-                <button
-                  type="button"
-                  className={`seg-btn ${save.settings.growthPace === 'fast' ? 'seg-btn--active' : ''}`}
-                  onClick={() => onUpdateSettings({ growthPace: 'fast' })}
-                >
-                  Fast (3.5x)
-                </button>
-              </div>
             </div>
 
             <div className="setting-card">

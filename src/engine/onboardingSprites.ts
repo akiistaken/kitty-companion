@@ -186,7 +186,7 @@ export function drawLetterpadNote(
 
   ctx.font = 'bold 16px "Cascadia Mono", Consolas, monospace';
   ctx.fillStyle = '#2e1f47';
-  ctx.fillText(`Hello ${userName},`, cx, y + 72);
+  ctx.fillText(`Meow ${userName},`, cx, y + 72);
 
   ctx.font = 'bold 14px "Segoe UI", "Segoe UI Emoji", system-ui, sans-serif';
   ctx.fillStyle = '#60458c';

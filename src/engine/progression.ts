@@ -765,3 +765,88 @@ export function pickLoveNoteText(userName: string): string {
   lastLoveNoteIdx = idx;
   return pool[idx];
 }
+
+export interface DailyStampDef {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;
+}
+
+export const DAILY_STAMP_DEFS: DailyStampDef[] = [
+  {
+    id: 'first_stretch',
+    title: 'Big Stretch',
+    icon: '🧘',
+    description: 'Did a cozy nose-to-tail stretch.',
+  },
+  {
+    id: 'belly_roll',
+    title: 'Belly Roll',
+    icon: '🐾',
+    description: 'Rolled around kicking pink toe beans.',
+  },
+  {
+    id: 'sleep_firefly',
+    title: 'Deep Sleeper',
+    icon: '🌙',
+    description: 'Slept peacefully past a fluttery visitor.',
+  },
+  {
+    id: 'slow_blink',
+    title: 'Slow Blink',
+    icon: '💜',
+    description: 'Gave you an affectionate slow blink.',
+  },
+  {
+    id: 'window_peek',
+    title: 'Edge Peek',
+    icon: '🪟',
+    description: 'Peeked curiously over a window ledge.',
+  },
+  {
+    id: 'morning_yawn',
+    title: 'Morning Yawn',
+    icon: '✨',
+    description: 'Let out a tiny sleepy yawn.',
+  },
+];
+
+export function getLocalDateKey(now = Date.now()): string {
+  const d = new Date(now);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function getTodayDailyStamps(save: KittenSaveState, now = Date.now()): string[] {
+  const key = getLocalDateKey(now);
+  if (!save.dailyStamps || save.dailyStamps.dateKey !== key) {
+    return [];
+  }
+  return Array.isArray(save.dailyStamps.stamps) ? save.dailyStamps.stamps : [];
+}
+
+/**
+ * Record a cute daily moment stamp (resetting automatically each local day).
+ */
+export function recordDailyStamp(
+  save: KittenSaveState,
+  stampId: string,
+  now = Date.now(),
+): boolean {
+  const key = getLocalDateKey(now);
+  if (!save.dailyStamps || save.dailyStamps.dateKey !== key) {
+    save.dailyStamps = { dateKey: key, stamps: [stampId] };
+    return true;
+  }
+  if (!Array.isArray(save.dailyStamps.stamps)) {
+    save.dailyStamps.stamps = [];
+  }
+  if (save.dailyStamps.stamps.includes(stampId)) {
+    return false;
+  }
+  save.dailyStamps.stamps.push(stampId);
+  return true;
+}

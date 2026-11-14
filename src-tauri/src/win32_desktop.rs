@@ -40,6 +40,7 @@ pub struct DesktopSnapshot {
     pub cursor_y: i32,
     pub idle_ms: u64,
     pub is_audio_playing: bool,
+    pub is_fullscreen_foreground: bool,
     pub monitors: Vec<MonitorRect>,
     pub windows: Vec<WindowPlatform>,
 }
@@ -483,6 +484,15 @@ mod imp {
             };
 
             let is_audio_playing = is_system_audio_playing();
+            let is_fullscreen_foreground = windows.iter().any(|w| {
+                w.is_foreground
+                    && monitors.iter().any(|m| {
+                        w.x <= m.x + 2
+                            && w.y <= m.y + 2
+                            && w.x + w.width >= m.x + m.width - 2
+                            && w.y + w.height >= m.y + m.height - 2
+                    })
+            });
 
             DesktopSnapshot {
                 virtual_x: vx,
@@ -493,6 +503,7 @@ mod imp {
                 cursor_y: cy - vy,
                 idle_ms,
                 is_audio_playing,
+                is_fullscreen_foreground,
                 monitors,
                 windows,
             }
@@ -528,6 +539,7 @@ mod imp {
             cursor_y: 0,
             idle_ms: 0,
             is_audio_playing: false,
+            is_fullscreen_foreground: false,
             monitors: vec![MonitorRect {
                 x: 0,
                 y: 0,

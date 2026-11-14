@@ -21,7 +21,6 @@ export const HudWindow: React.FC = () => {
   const [save, setSave] = useState<KittenSaveState>(() => createInitialSaveState());
   const [focus, setFocus] = useState<FocusState>(DEFAULT_FOCUS);
   const [teaseYarnActive, setTeaseYarnActive] = useState<boolean>(false);
-  const [featherWandActive, setFeatherWandActive] = useState<boolean>(false);
   const [cushionActive, setCushionActive] = useState<boolean>(false);
   const [laserActive, setLaserActive] = useState<boolean>(false);
   const [plantActive, setPlantActive] = useState<boolean>(false);
@@ -41,9 +40,6 @@ export const HudWindow: React.FC = () => {
         if (parsed.focus) setFocus(parsed.focus);
         if (typeof parsed.teaseYarnActive === 'boolean') {
           setTeaseYarnActive(parsed.teaseYarnActive);
-        }
-        if (typeof parsed.featherWandActive === 'boolean') {
-          setFeatherWandActive(parsed.featherWandActive);
         }
         if (typeof parsed.cushionActive === 'boolean') {
           setCushionActive(parsed.cushionActive);
@@ -133,7 +129,6 @@ export const HudWindow: React.FC = () => {
       save={save}
       focus={focus}
       teaseYarnActive={teaseYarnActive}
-      featherWandActive={featherWandActive}
       cushionActive={cushionActive}
       laserActive={laserActive}
       plantActive={plantActive}
@@ -147,7 +142,6 @@ export const HudWindow: React.FC = () => {
       onTossToy={(kind) => sendAction({ type: 'tossToy', kind })}
       onPokeKitten={() => sendAction({ type: 'pokeKitten' })}
       onToggleTeaseYarn={() => sendAction({ type: 'toggleTeaseYarn' })}
-      onToggleFeatherWand={() => sendAction({ type: 'toggleFeatherWand' })}
       onToggleCushion={() => sendAction({ type: 'toggleCushion' })}
       onToggleLaser={() => sendAction({ type: 'toggleLaser' })}
       onTogglePlant={() => sendAction({ type: 'togglePlant' })}
@@ -158,6 +152,8 @@ export const HudWindow: React.FC = () => {
       onMakeJarWish={() => sendAction({ type: 'makeJarWish' })}
       onSpawnBubbles={() => sendAction({ type: 'spawnBubbles' })}
       onDoTrick={() => sendAction({ type: 'doTrick' })}
+      onDoStretch={() => sendAction({ type: 'doStretch' })}
+      onDoRoll={() => sendAction({ type: 'doRoll' })}
       onClearYarn={() => sendAction({ type: 'clearYarn' })}
       onToggleFocus={() => sendAction({ type: 'toggleFocus' })}
       onSnapMemory={() => sendAction({ type: 'snapMemory' })}
