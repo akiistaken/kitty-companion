@@ -6,7 +6,7 @@
 | --- | --- |
 | Application source directory | `c:\Users\Aki\Kitten` |
 | Product name, publisher, executable | `Kitty Night`, publisher `Aki`, executable `kitten.exe` (`com.aki.kitten`) |
-| Version | `1.0.0` (`v1.0.0`) |
+| Version | `1.0.1` (`v1.0.1`) |
 | Target architecture & supported Windows | Windows x64 (`x86_64`), Windows 10 / 11 (WebView2 Runtime) |
 | Build command | `npm run tauri build` |
 | Runtime requirements | Microsoft Edge WebView2 Runtime (auto-bootstrapped by NSIS installer if missing) |
@@ -33,18 +33,18 @@
 
 3. Build outputs (gitignored under `src-tauri/target/`):
    - Application binary: `src-tauri\target\release\kitten.exe`
-   - NSIS installer: `src-tauri\target\release\bundle\nsis\Kitty Night_1.0.0_x64-setup.exe` (published on GitHub Releases as `Kitty.Night_1.0.0_x64-setup.exe`)
+   - NSIS installer: `src-tauri\target\release\bundle\nsis\Kitty Night_1.0.1_x64-setup.exe` (published on GitHub Releases as `Kitty.Night_1.0.1_x64-setup.exe`)
 
 4. Compute the installer SHA-256 checksum:
 
    ```powershell
-   Get-FileHash -LiteralPath 'src-tauri\target\release\bundle\nsis\Kitty Night_1.0.0_x64-setup.exe' -Algorithm SHA256
+   Get-FileHash -LiteralPath 'src-tauri\target\release\bundle\nsis\Kitty Night_1.0.1_x64-setup.exe' -Algorithm SHA256
    ```
 
 ## Distribution Artifacts (`distribution/` & Root Synced Copies)
 
 - `install.ps1` (root & `distribution/install.ps1`): PowerShell 5.1 & 7 `irm ... | iex` installer script with SHA-256 verification and cleanup.
-- `SHA256SUMS.txt` (root & `distribution/SHA256SUMS.txt`): Checksum manifest for `v1.0.0`.
+- `SHA256SUMS.txt` (root & `distribution/SHA256SUMS.txt`): Checksum manifest for `v1.0.1`.
 - `README.md` (root & `distribution/README.md`): Repository and installer documentation for `akiistaken/kitty-companion`.
 
 ## Release Checklist (Future Versions)

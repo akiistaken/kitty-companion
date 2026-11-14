@@ -9,10 +9,10 @@
     $ErrorActionPreference = 'Stop'
 
     $appName = 'Kitty Night'
-    $expectedVersion = '1.0.0'
-    $installerFileName = 'Kitty.Night_1.0.0_x64-setup.exe'
-    $installerUrl = 'https://github.com/akiistaken/kitty-companion/releases/download/v1.0.0/Kitty.Night_1.0.0_x64-setup.exe'
-    $expectedSha256 = '2C5A5CA24A931184D47DDE4338A60B49A9B9382766B6D4884269472A9F38A327'
+    $expectedVersion = '1.0.1'
+    $installerFileName = 'Kitty.Night_1.0.1_x64-setup.exe'
+    $installerUrl = 'https://github.com/akiistaken/kitty-companion/releases/download/v1.0.1/Kitty.Night_1.0.1_x64-setup.exe'
+    $expectedSha256 = '8651E6C8FE4C81232B9609F08E1BC770DBDD1F0D2A7476D10E3D4897A624184D'
     $silentArgs = @('/S')
     $successExitCodes = @(0)
 

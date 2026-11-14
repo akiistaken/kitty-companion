@@ -1186,7 +1186,7 @@ export const HudDrawer: React.FC<HudDrawerProps> = ({
             <div className="setting-card">
               <div className="section-label">About</div>
               <p className="timeline-detail">
-                Kitty Night v1.0.0
+                Kitty Night v1.0.1
               </p>
               <p className="timeline-detail">
                 Developed by: Akii 😸✨
